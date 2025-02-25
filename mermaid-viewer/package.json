@@ -1,0 +1,22 @@
+{
+  "name": "@emanuelegissi/widget-mermaid-viewer",
+  "description": "Simple Mermaid diagram viewer.",
+  "homePage": "https://github.com/emanuelegissi/my-grist-widget",
+  "version": "0.0.1",
+  "grist": {
+    "name": "Mermaid viewer",
+    "url": "https://emanuelegissi.github.io/my-grist-widget/mermaid-viewer/index.html",
+    "widgetId": "@emanuelegissi/widget-mermaid-viewer",
+    "published": true,
+    "accessLevel": "full",
+    "renderAfterReady": true,
+    "description": "A simple Mermaid diagram viewer.",
+    "authors": [
+      {
+        "name": "Emanuele Gissi",
+        "url": "https://github.com/emanuelegissi"
+      }
+    ],
+    "isGristLabsMaintained": true
+  }
+}

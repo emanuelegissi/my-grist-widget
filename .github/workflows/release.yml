@@ -1,0 +1,39 @@
+name: Automatic release
+on:
+  # Action is triggered on every commit to the master branch.
+  push:
+    branches:
+    - master
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        submodules: true
+
+    - name: Build manifest
+      run: ./buildtools/publish.js manifest.json
+      # Create new release tagged as latest, and overwrite last one.
+      # https://github.com/marvinpinto/actions/tree/master/packages/automatic-releases
+    - uses: "marvinpinto/action-automatic-releases@latest"
+      with:
+        repo_token: "${{ secrets.GITHUB_TOKEN }}"
+        automatic_release_tag: "latest"
+        prerelease: false
+        title: "Automatic release"
+        files: manifest.json
+
+    # Would like a version of manifest.json that is usable from browsers
+    # for grist-static. CORS wildcard is not set on releases, but is set
+    # on github pages. Also jsdelivr can mirror branches, but not releases.
+    - name: Make a release branch that includes manifest.json
+      run: |
+          git config user.name "Paul's Grist Bot"
+          git config user.email "<paul+bot@getgrist.com>"
+          git add -f manifest.json
+          git commit -m "add manifest.json" -a
+          git push --set-upstream origin HEAD:release -f

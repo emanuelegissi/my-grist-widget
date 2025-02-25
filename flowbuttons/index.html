@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html  lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Grist Flow Buttons</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+  <script src="script.js"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <div class="container">
+      <div
+        v-for="msg in msgs"
+        :key="msg.id"
+        class="flowpara"
+      >
+        {{ msg.text }}
+      </div>
+      <button
+        v-for="btn in btns"
+        :key="btn.id"
+        :title="btn.desc"
+        :style="{ backgroundColor: btn.color }"
+        @click="btn.onclick"
+        class="flowbtn"
+      >
+        {{ btn.label }}
+      </button>
+    </div>
+  </div>
+</body>
+</html>

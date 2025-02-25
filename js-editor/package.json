@@ -1,0 +1,22 @@
+{
+  "name": "@emanuelegissi/widget-js-editor",
+  "description": "A simple Javascript editor.",
+  "homePage": "https://github.com/emanuelegissi/my-grist-widget",
+  "version": "0.0.1",
+  "grist": {
+    "name": "Javascript editor",
+    "url": "https://emanuelegissi.github.io/my-grist-widget/js-editor/index.html",
+    "widgetId": "@emanuelegissi/widget-js-editor",
+    "published": true,
+    "accessLevel": "full",
+    "renderAfterReady": true,
+    "description": "A simple Javascript editor.",
+    "authors": [
+      {
+        "name": "Emanuele Gissi",
+        "url": "https://github.com/emanuelegissi"
+      }
+    ],
+    "isGristLabsMaintained": true
+  }
+}

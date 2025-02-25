@@ -1,0 +1,18 @@
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+  }
+  #container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+  #toolbar {
+    background-color: #ffffff;
+    padding: 6px;
+    border-bottom: 1px solid #ccc;
+  }
+  #editor {
+    flex: 1;
+  }

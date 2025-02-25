@@ -1,0 +1,22 @@
+{
+  "name": "@emanuelegissi/widget-flowbuttons",
+  "description": "Configurable buttons for workflows.",
+  "homePage": "https://github.com/emanuelegissi/my-grist-widget",
+  "version": "0.0.1",
+  "grist": {
+    "name": "Flowbuttons",
+    "url": "https://emanuelegissi.github.io/my-grist-widget/flowbuttons/index.html",
+    "widgetId": "@emanuelegissi/widget-flowbuttons",
+    "published": true,
+    "accessLevel": "full",
+    "renderAfterReady": true,
+    "description": "Build buttons that send scriptable actions for workflows.",
+    "authors": [
+      {
+        "name": "Emanuele Gissi",
+        "url": "https://github.com/emanuelegissi"
+      }
+    ],
+    "isGristLabsMaintained": true
+  }
+}
