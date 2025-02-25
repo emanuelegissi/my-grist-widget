@@ -4,8 +4,8 @@ const config = {  // Configuration
   processCol: null,
   statusCol: null,
   errCol: null,
-  actionsTable: "Actions",
-  modulesTable: "Modules",
+  actionsTable: "Flowactions",
+  modulesTable: "Flowmodules",
 }
 
 const cache = {  // Table cache
