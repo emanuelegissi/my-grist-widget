@@ -1,47 +1,36 @@
-body {
-  font-family: Sans-Serif;
-  font-size: 16px;
-  padding: 0px;
-  margin: 0px;
-}
-*, *:before, *:after {
-  -webkit-box-sizing: border-box;
-  -moz-box-sizing: border-box;
-  box-sizing: border-box;
-}
+  body {
+    font-family: Sans-Serif;
+    padding: 0px;
+    margin: 3px;
+  }
+  .container {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 3px;
+  }
+  .flowpara {
+    display: block;
+    color: red;
+    padding: 0px;
+    margin: 0px;
+    font-size: 13px;
+    font-family: inherit;
+  }
+  .flowbtn {
+    display: block;
+    color: White;
+    background-color: Blue;
+    padding: 6px 8px;
+    margin: 0px;
+    border: 1px solid;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 16px;
+    font-family: inherit;
+  }
+  .flowbtn:hover {border: 1px solid #494949;}
+  .flowbtn:active {background-color: #494949;}
 
-.container {
-  width: 100%;
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 6px;
-}
-
-.flowpara {
-  display: block;
-  color: red;
-  padding: 6px 8px;
-  font-size: inherit;
-  font-family: inherit;
-  font-weight: inherit;
-  margin: 0px;
-}
-
-.flowbtn {
-  display: block;
-  color: #FFFFFF;
-  background-color: #3B82F6;
-  border: 1px solid;
-  padding: 6px 8px;
-  font-size: inherit;
-  font-family: inherit;
-  font-weight: inherit;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.flowbtn:hover {border: 1px solid #494949;}
-
-.flowbtn:active {background-color: #494949;}
