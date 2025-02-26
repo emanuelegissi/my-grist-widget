@@ -4,6 +4,7 @@ const config = {  // Configuration
   processCol: null,
   statusCol: null,
   errCol: null,
+  duplicateCols: null,
   actionsTable: "Flowactions",
   modulesTable: "Flowmodules",
 }
@@ -21,7 +22,7 @@ const data = {  // Vue data
 // Utilities
 
 function throwErr(text) {
-  alert(`ERROR: ${text}`);
+  setMsg(`${text}`);
   throw new Error(text);
 }
 
@@ -55,9 +56,10 @@ async function updateRecordsWrap({tableId, ids, fields={}, confirmText=null}) {
   } catch (err) { throwErr(`Cannot update records in <${tableId}> table: ${err}`); }
 }
 
-async function duplicateRecordWrap({tableId, record, cols, confirmText=null, setCursor=true}) {
+async function duplicateRecordWrap({tableId, record, cols=null, confirmText=null, setCursor=true}) {
   if (confirmText && !confirm(confirmText)) {return;}
   // filter new cols, eg. not formulas
+  if (!cols) { cols = config.duplicateCols; }
   const fields = Object.fromEntries(  
     Object.entries(record).filter(([col]) => cols.includes(col))
   );
@@ -82,6 +84,16 @@ async function addRecord(action, record) {
 async function delRecord(action, record) {
   if (!confirm("Delete record?")) { return; }
   grist.selectedTable.destroy([record.id]);
+}
+
+async function duplicateRecord(action, record) {
+  if (!confirm("Duplicate record?")) { return; }
+  const cols = config.duplicateCols;
+  const fields = Object.fromEntries(  
+    Object.entries(record).filter(([col]) => cols.includes(col))
+  );  
+  const res = await grist.selectedTable.create({fields: fields,});
+  grist.setCursorPos({rowId: res.id});
 }
 
 async function updateStatus(action, record) {
@@ -178,13 +190,17 @@ async function updateActions() {
   cache.actions = actions;
 }
 
-async function updateMsgs(record) {
+async function setMsg(text=null) {
   data.msgs.length = 0;  // empty the list
-  const errText = record[config.errCol]; 
-  if (errText) {
-    const msg = {id: record.id, text: errText};
+  if (text) {
+    const msg = {id: 0, text: text};
     data.msgs.push(msg);  // refill
   }
+}
+
+async function updateMsgs(record) {
+  const errText = record[config.errCol];
+  setMsg(errText);
 }
 
 async function updateBtns(record) {
@@ -231,10 +247,13 @@ function onRecord(record, mappings) {
   if (
     mappings["processCol"] &&
     mappings["statusCol"] &&
-    mappings["errCol"]) {
+    mappings["errCol"] && 
+    mappings["duplicateCols"]
+  ) {
     config.processCol = mappings["processCol"];
     config.statusCol = mappings["statusCol"];
     config.errCol = mappings["errCol"];
+    config.duplicateCols = mappings["duplicateCols"];
   } else {
     // req columns not mapped.
     throwErr("Missing column mapping in widget settings");
@@ -246,9 +265,7 @@ function onRecord(record, mappings) {
 
 function onNewRecord(record, mappings) {
   // Set msgs
-  data.msgs.length = 0;  // empty the list
-  const msg = {id: 0, text: "New record"};
-  data.msgs.push(msg);  // refill
+  setMsg("New record");
   // Set btns
   data.btns.length = 0;  // empty the list  
 }
@@ -294,11 +311,19 @@ ready(async function() {
         allowMultiple: false,
       },
       {
-        name: "availableCols",
-        title: "Available to JS modules", 
+        name: "duplicateCols",
+        title: "Cols for duplication", 
         optional: false,
         type: "Any",
-        description: "Available columns for javascript modules",
+        description: "Columns used for record duplication",
+        allowMultiple: true,
+      },
+      {
+        name: "availableCols",
+        title: "Other cols", 
+        optional: false,
+        type: "Any",
+        description: "Other columns available to Javascript modules",
         allowMultiple: true,
       },
     ],
