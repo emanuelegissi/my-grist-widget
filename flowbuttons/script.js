@@ -26,34 +26,29 @@ function throwErr(text) {
   throw new Error(text);
 }
 
-// Wrapper functions (for convenience)
+// Wrapper functions (for convenience, no error catch)
 
 async function addRecordWrap({tableId, fields={}, confirmText=null, setCursor=true}) {
   if (confirmText && !confirm(confirmText)) { return; }
-  try {
-    const res = await grist.getTable(tableId).create({fields: fields});
-    if (setCursor) { grist.setCursorPos({rowId: res.id}); }
-    return res.id;
-  } catch (err) { throwErr(`Cannot add record in <${tableId}> table: ${err}`); }
+  const res = await grist.getTable(tableId).create({fields: fields});
+  if (setCursor) { grist.setCursorPos({rowId: res.id}); }
+  return res.id;
 }
 
 async function delRecordsWrap({tableId, ids, confirmText=null}) { 
   if (confirmText && !confirm(confirmText)) { return; }
-  try { grist.selectedTable.destroy(ids); }
-  catch (err) { throwErr(`Cannot delete records in <${tableId}> table: ${err}`); }
+  grist.selectedTable.destroy(ids);
 };
   
 async function updateRecordsWrap({tableId, ids, fields={}, confirmText=null}) {
-    if (confirmText && !confirm(confirmText)) {return;}
-    // from {"prop1": "val1", "prop2": "val2"} obtain:
-    // {"prop1": ["val1", "val1"], "prop2": ["val1", "val1"], ...}
-    const fss = Object.fromEntries(
-      Object.entries(fields).map(([key, value]) => [key, Array(ids.length).fill(value)])
-    );
-    const actions = [["BulkUpdateRecord", tableId, ids, fss]];
-  try {
-    await grist.docApi.applyUserActions(actions);
-  } catch (err) { throwErr(`Cannot update records in <${tableId}> table: ${err}`); }
+  if (confirmText && !confirm(confirmText)) {return;}
+  // from {"prop1": "val1", "prop2": "val2"} obtain:
+  // {"prop1": ["val1", "val1"], "prop2": ["val1", "val1"], ...}
+  const fss = Object.fromEntries(
+    Object.entries(fields).map(([key, value]) => [key, Array(ids.length).fill(value)])
+  );
+  const actions = [["BulkUpdateRecord", tableId, ids, fss]];
+  await grist.docApi.applyUserActions(actions);
 }
 
 async function duplicateRecordWrap({tableId, record, cols=null, confirmText=null, setCursor=true}) {
@@ -71,33 +66,41 @@ async function isValid(action, record) {
   return (!record[config.errCol]);  // no errors, validation ok  
 }
 
-// Premade onclick functions
+// Premade onclick functions, catch errors
 
 async function addRecord(action, record) {
-  const res = await grist.selectedTable.create({fields: {},});
-  grist.setCursorPos({rowId: res.id});
+  try {
+    const res = await grist.selectedTable.create({fields: {},});
+    grist.setCursorPos({rowId: res.id});
+  } catch (err) { throwErr(`Cannot execute <${action.label}>: ${err}`); }
 }
 
 async function delRecord(action, record) {
-  if (!confirm("Delete record?")) { return; }
-  grist.selectedTable.destroy([record.id]);
+  if (!confirm(`Confirm <${action.label}>?`)) { return; }
+  try {
+    grist.selectedTable.destroy([record.id]);
+  } catch (err) { throwErr(`Cannot execute <${action.label}>: ${err}`); }
 }
 
 async function duplicateRecord(action, record) {
-  if (!confirm("Duplicate record?")) { return; }
+  if (!confirm(`Confirm <${action.label}>?`)) { return; }
   const cols = config.duplicateCols;
   const fields = Object.fromEntries(  
     Object.entries(record).filter(([col]) => cols.includes(col))
-  );  
-  const res = await grist.selectedTable.create({fields: fields,});
-  grist.setCursorPos({rowId: res.id});
+  );
+  try {
+    const res = await grist.selectedTable.create({fields: fields,});
+    grist.setCursorPos({rowId: res.id});
+  } catch (err) { throwErr(`Cannot execute <${action.label}>: ${err}`); }  
 }
 
 async function updateStatus(action, record) {
-  await grist.selectedTable.update({
-    id: record.id,
-    fields: {[config.statusCol] : action.end_status},
-  });
+  try {  
+    await grist.selectedTable.update({
+      id: record.id,
+      fields: {[config.statusCol] : action.end_status},
+    });
+  } catch (err) { throwErr(`Cannot execute <${action.label}>: ${err}`); }  
 }
 
 // Load tables
