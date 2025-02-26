@@ -57,15 +57,12 @@ async function updateRecordsWrap({tableId, ids, fields={}, confirmText=null}) {
 }
 
 async function duplicateRecordWrap({tableId, record, cols=null, confirmText=null, setCursor=true}) {
-  if (confirmText && !confirm(confirmText)) {return;}
   // filter new cols, eg. not formulas
-  if (!cols) { cols = config.duplicateCols; }
+  if (!cols) { cols = config.duplicateCols; }  // if empty, default to duplicateCols
   const fields = Object.fromEntries(  
     Object.entries(record).filter(([col]) => cols.includes(col))
   );
-  try {
-      return await addRecordWrap({tableId: tableId, fields: fields, setCursor: setCursor});
-  } catch (err) { alert(`Cannot duplicate record in <${tableId}> table: ${err}`); }
+  return await addRecordWrap({tableId: tableId, fields: fields, confirmText: confirmText, setCursor: setCursor});
 }
 
 // Premade isactive functions
