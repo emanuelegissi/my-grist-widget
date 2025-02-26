@@ -11,23 +11,23 @@
 <body>
   <div id="app">
     <div class="container">
-      <div
-        v-for="msg in msgs"
-        :key="msg.id"
-        class="flowpara"
-      >
-        {{ msg.text }}
-      </div>
-      <button
+      <button class="flowbtn"
         v-for="btn in btns"
         :key="btn.id"
         :title="btn.desc"
         :style="{ backgroundColor: btn.color }"
         @click="btn.onclick"
-        class="flowbtn"
       >
         {{ btn.label }}
       </button>
+    </div>
+    <div class="container">
+      <div class="flowpara"
+        v-for="msg in msgs"
+        :key="msg.id"
+      >
+        {{ msg.text }}
+      </div>
     </div>
   </div>
 </body>
