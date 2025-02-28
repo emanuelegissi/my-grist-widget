@@ -13,7 +13,7 @@ https://emanuelegissi.github.io/my-grist-widget/flowbuttons
 Then create the two configuration tables, named `Flowactions` and `Flowmodules`.
 The structure of the two tables should correspond exactly to those of the application example [here](https://docs.getgrist.com/iFLERrF5h1rd/Approval-workflow?utm_id=share-doc).
 
-See more documentazion [here](https://github.com/emanuelegissi/my-grist-widget/wiki/Flowbuttons-widget).
+See further documentation [here](https://github.com/emanuelegissi/my-grist-widget/wiki/Flowbuttons-widget).
 
 ## JS editor widget
 
