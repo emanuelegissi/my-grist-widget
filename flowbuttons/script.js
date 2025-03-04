@@ -4,7 +4,7 @@ const config = {  // Configuration
   processCol: null,
   statusCol: null,
   errCol: null,
-  duplicateCols: null,
+  recordCol: null,  // FIXME Waiting for an improved Grist API
   actionsTable: "Flowactions",
   modulesTable: "Flowmodules",
 }
@@ -51,15 +51,6 @@ async function updateRecordsWrap({tableId, ids, fields={}, confirmText=null}) {
   await grist.docApi.applyUserActions(actions);
 }
 
-async function duplicateRecordWrap({tableId, record, cols=null, confirmText=null, setCursor=true}) {
-  // filter new cols, eg. not formulas
-  if (!cols) { cols = config.duplicateCols; }  // if empty, default to duplicateCols
-  const fields = Object.fromEntries(  
-    Object.entries(record).filter(([col]) => cols.includes(col))
-  );
-  return await addRecordWrap({tableId: tableId, fields: fields, confirmText: confirmText, setCursor: setCursor});
-}
-
 // Premade isactive functions
 
 async function isValid(action, record) {
@@ -72,26 +63,14 @@ async function addRecord(action, record) {
   try {
     const res = await grist.selectedTable.create({fields: {},});
     grist.setCursorPos({rowId: res.id});
-  } catch (err) { throwErr(`Cannot execute <${action.label}>: ${err}`); }
+  } catch (err) { throwErr(`Cannot execute «${action.label}»:\n${err}`); }
 }
 
 async function delRecord(action, record) {
-  if (!confirm(`Confirm <${action.label}>?`)) { return; }
+  if (!confirm(`Confirm «${action.label}»?`)) { return; }
   try {
     grist.selectedTable.destroy([record.id]);
-  } catch (err) { throwErr(`Cannot execute <${action.label}>: ${err}`); }
-}
-
-async function duplicateRecord(action, record) {
-  if (!confirm(`Confirm <${action.label}>?`)) { return; }
-  const cols = config.duplicateCols;
-  const fields = Object.fromEntries(  
-    Object.entries(record).filter(([col]) => cols.includes(col))
-  );
-  try {
-    const res = await grist.selectedTable.create({fields: fields,});
-    grist.setCursorPos({rowId: res.id});
-  } catch (err) { throwErr(`Cannot execute <${action.label}>: ${err}`); }  
+  } catch (err) { throwErr(`Cannot execute «${action.label}»:\n${err}`); }
 }
 
 async function updateStatus(action, record) {
@@ -100,7 +79,7 @@ async function updateStatus(action, record) {
       id: record.id,
       fields: {[config.statusCol] : action.end_status},
     });
-  } catch (err) { throwErr(`Cannot execute <${action.label}>: ${err}`); }  
+  } catch (err) { throwErr(`Cannot execute «${action.label}»:\n${err}`); }  
 }
 
 // Load tables
@@ -109,7 +88,7 @@ async function hasReqTables() {
   const reqTables = [config.modulesTable, config.actionsTable];
   const tables = await grist.docApi.listTables();
   for (let reqTable of reqTables) {
-    if (!(tables.includes(reqTable))) { throwErr(`Missing <${reqTable}> table`); }
+    if (!(tables.includes(reqTable))) { throwErr(`Missing «${reqTable}» table`); }
   }
   return true;
 }
@@ -120,9 +99,9 @@ async function getTableData(tableId, reqCols=[]) {
   try {
     tableData = await grist.docApi.fetchTable(tableId);
     cols = Object.keys(tableData);
-  } catch (err) { throwErr(`While getting <${tableId}> table data: ${err}`); }
+  } catch (err) { throwErr(`While getting «${tableId}» table data:\n${err}`); }
   for (let reqCol of reqCols) {
-    if (!cols.includes(reqCol)) { throwErr(`Missing column <${reqCol}> in <${tableId}> table`); }
+    if (!cols.includes(reqCol)) { throwErr(`Missing column «${reqCol}» in «${tableId}» table`); }
   }
   return tableData;
 }
@@ -136,10 +115,10 @@ async function updateModules() {
     if (!active) { continue; }
     const name = tableData.name[i];
     const js = tableData.js[i];
-    if (!name || name in modules) { throwErr(`Empty or duplicated name <${name}> in <${tableId}> table`); }
+    if (!name || name in modules) { throwErr(`Empty or duplicated name «${name}» in «${tableId}» table`); }
     try {
       modules[name] = await import(`data:text/javascript,${js}`);
-    } catch (err) { throwErr(`While importing <${name}> module: ${err}`); }
+    } catch (err) { throwErr(`While importing «${name}» module:\n${err}`); }
   }
   cache.modules = modules;
 }
@@ -153,9 +132,9 @@ function getActionFn(action, name) {
   try {
     if (length == 2) { fn = cache.modules[ps[0]][ps[1]]; }  // module fn
     else if (length == 1 && ps[0]) { fn = window[ps[0]]; }  // global fn
-    if (!fn) { throw new Error(`Function <${name}> not found`); }
+    if (!fn) { throw new Error(`Function «${name}» not found`); }
     return fn;
-  } catch(err) { throwErr(`Getting function <${name}> of <${action.label}> action: ${err}`); }
+  } catch(err) { throwErr(`Getting function «${name}» of «${action.label}» action:\n${err}`); }
 }
 
 async function updateActions() {
@@ -176,11 +155,11 @@ async function updateActions() {
     // Check action values
     if (!action.label) { throwErr(`Missing label in action`); }
     if (!Array.isArray(action.processes) || action.processes[0] !== "L") {
-      throwErr(`<${tableId}> table <processes> column is not a <Choice List>.`);
+      throwErr(`«${tableId}» table «processes» column is not a Choice List.`);
     }
     action.processes.shift();  // remove "L"
     // Save the actual function instead of its name
-    if (!action.onclick) { throwErr(`Missing onclick fn in <${action.label}> action`); }
+    if (!action.onclick) { throwErr(`Missing onclick fn in «${action.label}» action`); }
     action.onclick = getActionFn(action, action.onclick);
     if (action.isactive) { action.isactive = getActionFn(action, action.isactive); }
     // Push to list of actions
@@ -248,12 +227,12 @@ function onRecord(record, mappings) {
     mappings["processCol"] &&
     mappings["statusCol"] &&
     mappings["errCol"] && 
-    mappings["duplicateCols"]
+    mappings["recordCol"]
   ) {
     config.processCol = mappings["processCol"];
     config.statusCol = mappings["statusCol"];
     config.errCol = mappings["errCol"];
-    config.duplicateCols = mappings["duplicateCols"];
+    config.recordCol = mappings["recordCol"];
   } else {
     // req columns not mapped.
     throwErr("Missing column mapping in widget settings");
@@ -311,12 +290,12 @@ ready(async function() {
         allowMultiple: false,
       },
       {
-        name: "duplicateCols",
-        title: "Cols for duplication", 
+        name: "recordCol",
+        title: "Record", 
         optional: false,
-        type: "Any",
-        description: "Columns used for record duplication",
-        allowMultiple: true,
+        type: "Text",
+        description: "Formula field, like this: RECORD(rec)",
+        allowMultiple: false,
       },
       {
         name: "availableCols",
