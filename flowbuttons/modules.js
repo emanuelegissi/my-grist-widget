@@ -37,7 +37,7 @@ export async function duplicateRequest(action, record) {
       confirmText: null,
       setCursor: true,
     });
-  } catch (err) { throwErr(`Cannot execute «${action.label}»: ${err}`) }
+  } catch (err) { handleErr(`Cannot execute «${action.label}»: ${err}`) }
 }
 
 // Update request status, but only for selected tools
@@ -67,7 +67,7 @@ export async function updateRequestStatusOnlySel(action, record) {
         fields: {"Request": newId, "Select": true},
         confirmText: null,
       });
-    } catch (err) { throwErr(`Cannot execute «${action.label}»: ${err}`) }
+    } catch (err) { handleErr(`Cannot execute «${action.label}»: ${err}`) }
   }
   // Update original request status
   await updateStatus(action, record);
