@@ -37,7 +37,7 @@ async function addRecordWrap({tableId, fields={}, confirmText=null, setCursor=tr
 
 async function delRecordsWrap({tableId, ids, confirmText=null}) { 
   if (confirmText && !confirm(confirmText)) { return; }
-  grist.selectedTable.destroy(ids);
+  await grist.selectedTable.destroy(ids);
 };
   
 async function updateRecordsWrap({tableId, ids, fields={}, confirmText=null}) {
@@ -69,7 +69,7 @@ async function addRecord(action, record) {
 async function delRecord(action, record) {
   if (!confirm(`Confirm «${action.label}»?`)) { return; }
   try {
-    grist.selectedTable.destroy([record.id]);
+    await grist.selectedTable.destroy([record.id]);
   } catch (err) { throwErr(`Cannot execute «${action.label}»:\n${err}`); }
 }
 
