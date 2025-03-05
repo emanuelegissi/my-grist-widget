@@ -10,10 +10,10 @@ function getRequestFields(record) {
     r.Parents.rowIds.unshift("L");
     r.RefList.rowIds.unshift("L");
     return {
-      "Children": r.Children.rowIds,  // two-way
-      "Parents": r.Parents.rowIds,  // two-way
+      "Children": r.Children.rowIds,  // two-way, ref list
+      "Parents": r.Parents.rowIds,  // two-way, ref list
       "Reference": r.Reference.rowId, // ref
-      "RefList": r.RefList.rowIds, // ref
+      "RefList": r.RefList.rowIds, // ref list
       "Process": r.Process,
       "Request": r.Request,
       "Request_date": r.Request_date,

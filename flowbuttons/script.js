@@ -22,7 +22,7 @@ const data = {  // Vue data
 // Utilities
 
 function handleErr(text) {
-  setMsg(`${text}`);
+  alert(`${text}`);
   console.error(text);
 }
 
