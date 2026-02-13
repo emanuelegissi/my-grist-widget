@@ -1,0 +1,22 @@
+{
+  "name": "@emanuelegissi/widget-actionbuttonplus",
+  "description": "A configurable button that can send user actions to the data engine, and selects a new record.",
+  "homePage": "https://github.com/emanuelegissi/my-grist-widget",
+  "version": "0.0.1",
+  "grist": {
+    "name": "Action button plus",
+    "url": "https://emanuelegissi.github.io/my-grist-widget/actionbuttonplus/index.html",
+    "widgetId": "@emanuelegissi/widget-actionbuttonplus",
+    "published": true,
+    "accessLevel": "full",
+    "renderAfterReady": true,
+    "description": "Build one or more buttons that send customizable actions (e.g. \"AddRecord\") to the Grist data engine.",
+    "authors": [
+      {
+        "name": "Emanuele Gissi",
+        "url": "https://github.com/emanuelegissi"
+      }
+    ],
+    "isGristLabsMaintained": false
+  }
+}
