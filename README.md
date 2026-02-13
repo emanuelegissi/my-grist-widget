@@ -2,6 +2,14 @@
 
 This repository contains my custom widgets for the [Grist framework](https://www.getgrist.com/).
 
+## Actionbuttonplus widget
+
+This widget creates configurable buttons that can send user actions to the data engine, and selects a new record.
+See an application example [here](). FIXME
+
+Use it by inserting the following link as widget custom URL:
+https://emanuelegissi.github.io/my-grist-widget/actionbuttonplus
+
 ## Flowbuttons widget
 
 This widget creates configurable buttons for workflow management.
