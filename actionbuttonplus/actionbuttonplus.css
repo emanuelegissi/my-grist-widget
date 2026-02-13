@@ -70,14 +70,13 @@ body {
   box-shadow: 0 0 0 2px rgba(20, 134, 255, 0.35);
 }
 
-/* Tooltip: Grist-like dark box, NO animation, NO arrow, MULTI-LINE WRAP, UNDER the button */
+/* Tooltip: Grist-like dark box, NO animation, NO arrow, NO WRAP, UNDER the button, NO ELLIPSIS */
 .btn-wrap[data-tooltip]:not([data-tooltip=""])::after {
   content: attr(data-tooltip);
   position: absolute;
   left: 50%;
-  top: calc(100% + 2px);
+  top: calc(100% - 4px);
   transform: translateX(-50%);
-
   background: #3b3b3b;
   color: #fff;
   border: 1px solid #2a2a2a;
@@ -87,12 +86,8 @@ body {
   font-weight: 500;
   line-height: 1.25;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
-
-  /* behavior */
-  white-space: nowrap;
   z-index: 10;
-
-  /* hidden by default (no animation) */
+  white-space: nowrap;
   display: none;
 }
 
@@ -100,3 +95,4 @@ body {
 .btn-wrap[data-tooltip]:not([data-tooltip=""]):focus-within::after {
   display: block;
 }
+
