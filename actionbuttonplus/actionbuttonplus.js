@@ -1,4 +1,3 @@
-// Run `fn` immediately if DOM is already parsed, otherwise wait for DOMContentLoaded.
 function ready(fn) {
   if (document.readyState !== 'loading') {
     fn();
@@ -7,151 +6,157 @@ function ready(fn) {
   }
 }
 
-// Name of the column expected in the record (or mapped via Creator Panel).
 const column = 'ActionButton';
-
-// Vue instance handle (optional; useful for debugging)
 let app;
 
-// Reactive data model for Vue.
 let data = {
-  status: 'waiting',  // 'waiting' shows “Waiting for data...”; otherwise used for errors
-  result: null,       // UI feedback: "Working...", "Done", or error message
+  status: 'waiting',
+  result: null,
   inputs: [{
     description: null,
     button: null,
     actions: null,
+    color: null,     // optional: CSS color string
   }],
-  desc: null          // index of hovered button (used to show description)
 };
 
 function handleError(err) {
   console.error('ERROR', err);
-  // Strip "Error: " prefix for cleaner display
   data.status = String(err).replace(/^Error: /, '');
 }
 
+function isUserActionTuple(x) {
+  return Array.isArray(x) && typeof x[0] === "string";
+}
+
 async function applyActions(actions) {
-  // Show progress feedback in the widget UI.
   data.result = "Working...";
 
-  // Identify AddRecord actions (there may be more than one action in a click).
-  // We'll use this to select the row that gets created.
+  // Remember which actions are AddRecord (there may be more than one).
   const addRecordIndexes = [];
   for (let i = 0; i < (actions || []).length; i++) {
     const a = actions[i];
-    // UserAction format: ["AddRecord", tableId, null, {col: val, ...}]
     if (Array.isArray(a) && a[0] === "AddRecord") {
       addRecordIndexes.push(i);
     }
   }
 
   try {
-    // Apply the actions. Requires requiredAccess: "full".
     const res = await grist.docApi.applyUserActions(actions);
 
-    // applyUserActions commonly returns an object with retValues[],
-    // aligned with the input actions array.
+    // `applyUserActions` returns an object that typically includes `retValues`,
+    // aligned to the input `actions` array.
     const retValues = (res && Array.isArray(res.retValues)) ? res.retValues : null;
 
-    // If we added records and have aligned return values, select the last created one.
     if (retValues && addRecordIndexes.length) {
+      // Select the last created record if multiple were added.
       const idx = addRecordIndexes[addRecordIndexes.length - 1];
       const rv = retValues[idx];
 
-      // Defensive extraction of the new row id:
-      // usually rv is a number, but keep a fallback for object-with-id shapes.
       const newRowId =
         (typeof rv === "number" && Number.isFinite(rv)) ? rv :
         (rv && typeof rv === "object" && typeof rv.id === "number") ? rv.id :
         null;
 
       if (newRowId != null) {
-        // Move cursor to new row (makes it the current record).
-        // allowSelectBy: true must be set in grist.ready().
         await grist.setCursorPos({ rowId: newRowId });
-
-        // Also select it (helpful for linked sections / visible selection state).
         await grist.setSelectedRows([newRowId]);
       }
     }
 
     data.result = "Done";
   } catch (e) {
-    // Typical causes: missing full access, invalid user-actions, etc.
     data.result = `Please grant full access for writing. (${e})`;
   }
 }
 
 function onRecord(row, mappings) {
   try {
-    // Clear any previous error and previous "Done/Working" message
     data.status = '';
     data.result = null;
 
-    // Apply column mappings from the Creator Panel (if any).
+    // If there is no mapping, test the original record.
     row = grist.mapColumnNames(row) || row;
 
-    // Ensure the configured/mapped column exists.
     if (!row.hasOwnProperty(column)) {
       throw new Error(
         `Need a visible column named "${column}". You can map a custom column in the Creator Panel.`
       );
     }
 
-    // Cell may contain either a single button config object or an array of them.
     let btns = row[column];
 
-    // Normalize to array for simpler handling.
+    // Empty cell => no buttons (avoid throwing)
+    if (btns == null) {
+      data.inputs = [];
+      return;
+    }
+
+    // If only one action button is defined, put it within an Array
     if (!Array.isArray(btns)) {
       btns = [btns];
     }
 
-    // Validate required keys on each button config.
     const keys = ['button', 'description', 'actions'];
+
     for (const btn of btns) {
       if (!btn || keys.some(k => !btn[k])) {
         const allKeys = keys.map(k => JSON.stringify(k)).join(", ");
         const missing = keys.filter(k => !btn?.[k]).map(k => JSON.stringify(k)).join(", ");
         const gristName = mappings?.[column] || column;
-
         throw new Error(
           `"${gristName}" cells should contain an object with keys ${allKeys}. ` +
           `Missing keys: ${missing}`
         );
       }
+
+      if (!Array.isArray(btn.actions) || !btn.actions.every(isUserActionTuple)) {
+        throw new Error(
+          `Invalid "actions". Expected an array of UserActions like ` +
+          `[["AddRecord","Table1",null,{...}]]`
+        );
+      }
+
+      // Optional button color (any CSS color string).
+      if (btn.color != null && typeof btn.color !== "string") {
+        throw new Error(`Optional "color" must be a string (e.g. "#1486ff").`);
+      }
     }
 
-    // Store validated button definitions for Vue to render.
     data.inputs = btns;
-    data.desc = null;
   } catch (err) {
     handleError(err);
   }
 }
 
 ready(function() {
-  // Initialize Grist widget integration:
-  // - requiredAccess: "full" because applyUserActions can write
-  // - allowSelectBy: true to let the widget change cursor/selection
-  // - columns: request the ActionButton column (or allow mapping to it)
+  // Update the widget anytime the document data changes.
   grist.ready({
     requiredAccess: "full",
     allowSelectBy: true,
     columns: [{ name: column, title: "Action" }],
   });
 
-  // React to record selection changes in Grist.
   grist.onRecord(onRecord);
 
-  // Forward Vue errors through the same handler.
   Vue.config.errorHandler = handleError;
 
-  // Start Vue app.
   app = new Vue({
     el: '#app',
     data: data,
-    methods: { applyActions }
+    methods: {
+      applyActions,
+
+      // If input.color is set, override the neutral style.
+      buttonStyle(input) {
+        if (!input || !input.color) return null;
+        return {
+          backgroundColor: input.color,
+          borderColor: input.color,
+          color: '#fff',
+        };
+      },
+    }
   });
 });
 

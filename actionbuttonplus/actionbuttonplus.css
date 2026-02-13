@@ -5,8 +5,6 @@ body {
 }
 
 *, *:before, *:after {
-  -webkit-box-sizing: border-box;
-  -moz-box-sizing: border-box;
   box-sizing: border-box;
 }
 
@@ -15,7 +13,6 @@ body {
   margin-top: 40px;
   color: blue;
 }
-
 
 #app {
   margin: 8px;
@@ -28,22 +25,104 @@ body {
   flex-wrap: wrap;
 }
 
-.description, .result, .button {
-  margin: 4px 0;
+/* Result line (Working... / Done / errors) */
+.result {
+  margin: 6px 0 0 0;
+  font-size: 12px;
+  color: #555;
 }
 
-.message {
-  color: orange;
-}
-
-.button {
-  border: none;
-  border-radius: 6px;
-  background-color: #1486ff;
+/* Wrapper enables tooltip positioning per button */
+.btn-wrap {
+  position: relative;
+  display: inline-flex;
   margin: 4px;
-  padding: 8px 16px;
-  color: white;
-  font-size: inherit;
-  font-family: inherit;
-  font-weight: inherit;
 }
+
+/* Neutral “Grist-like” button */
+.grist-btn {
+  appearance: none;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  background: #f7f7f7;
+  padding: 8px 16px;
+
+  color: #222;
+  font-size: 13px;
+  font-family: inherit;
+  font-weight: 600;
+
+  cursor: pointer;
+  user-select: none;
+  line-height: 1;
+}
+
+.grist-btn:hover {
+  background: #eeeeee;
+}
+
+.grist-btn:active {
+  background: #e3e3e3;
+}
+
+.grist-btn:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(20, 134, 255, 0.35);
+}
+
+/* Tooltip (hover/focus). Only if there is text. */
+.btn-wrap[data-tooltip]:not([data-tooltip=""])::after,
+.btn-wrap[data-tooltip]:not([data-tooltip=""])::before {
+  opacity: 0;
+  transform: translateY(2px);
+  pointer-events: none;
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.btn-wrap[data-tooltip]:not([data-tooltip=""]):hover::after,
+.btn-wrap[data-tooltip]:not([data-tooltip=""]):hover::before,
+.btn-wrap[data-tooltip]:not([data-tooltip=""]):focus-within::after,
+.btn-wrap[data-tooltip]:not([data-tooltip=""]):focus-within::before {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Bubble */
+.btn-wrap[data-tooltip]:not([data-tooltip=""])::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+
+  max-width: 360px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  background: rgba(33, 33, 33, 0.95);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 8px;
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+  z-index: 10;
+}
+
+/* Arrow */
+.btn-wrap[data-tooltip]:not([data-tooltip=""])::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 2px);
+  transform: translateX(-50%);
+
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 6px solid rgba(33, 33, 33, 0.95);
+  z-index: 10;
+}
+

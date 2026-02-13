@@ -8,9 +8,10 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/2.5.3/vue.min.js"></script>
     <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 
-    <script src="actionbuttonplus.js?ver=1"></script>
-    <link rel="stylesheet" href="actionbuttonplus.css?ver=1">
+    <link rel="stylesheet" href="actionbuttonplus.css?ver=3">
+    <script src="actionbuttonplus.js?ver=3"></script>
   </head>
+
   <body>
     <div id="app">
       <div class="status" v-if="status">
@@ -21,22 +22,29 @@
           {{ status }}
         </template>
       </div>
+
       <template v-else>
         <div class="container">
-        <button
-          class="button"
-          v-for="(input, idx) in inputs"
-          :key="idx"
-          :title="input.description"
-          v-on:click="applyActions(input.actions)"
-          v-on:mouseover="desc = idx"
-          v-on:mouseleave="desc = null"
-        >
-          {{ input.button }}
-        </button>
+          <span
+            class="btn-wrap"
+            v-for="(input, idx) in inputs"
+            :key="idx"
+            :data-tooltip="input.description || ''"
+          >
+            <button
+              class="grist-btn"
+              type="button"
+              v-on:click="applyActions(input.actions)"
+              :style="buttonStyle(input)"
+            >
+              {{ input.button }}
+            </button>
+          </span>
         </div>
+
         <div class="result" v-if="result">{{ result }}</div>
       </template>
     </div>
   </body>
 </html>
+
