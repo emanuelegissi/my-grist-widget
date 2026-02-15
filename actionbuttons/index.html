@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Grist Action Buttons</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+  <script src="script.js"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <div id="app">
+    <div class="container">
+      <div class="btn-wrap" v-for="btn in btns" :key="btn.id" :data-tooltip="btn.desc || ''">
+        <button class="abbtn" :style="{ backgroundColor: btn.color }" :disabled="busy" @click="btn.onclick">
+          {{ btn.label }}
+        </button>
+      </div>
+    </div>
+    <div class="container" v-if="err">
+      <div class="abpara">{{ err }}</div>
+    </div>
+  </div>
+</body>
+
+</html>

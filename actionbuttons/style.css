@@ -1,0 +1,90 @@
+body {
+  font-family: sans-serif;
+  padding: 0;
+  margin: 3px;
+}
+
+.container {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 3px;
+}
+
+.abpara {
+  display: block;
+  color: #c00;
+  padding: 0;
+  margin: 0;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.abbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  color: #fff;
+  background-color: #1a73e8;
+  /* fallback if btn.color is empty */
+
+  padding: 6px 10px;
+  margin: 0;
+
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  border-radius: 6px;
+
+  cursor: pointer;
+  font-size: 14px;
+  font-family: inherit;
+  line-height: 1.2;
+
+  user-select: none;
+}
+
+.abbtn:hover:not(:disabled) {
+  filter: brightness(0.95);
+}
+
+.abbtn:active:not(:disabled) {
+  filter: brightness(0.85);
+}
+
+.abbtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Wrapper enables tooltip positioning per button */
+.btn-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+/* Tooltip */
+.btn-wrap[data-tooltip]:not([data-tooltip=""])::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: -4px;
+  top: calc(100% + 1px);
+  transform: none;
+  background: #3b3b3b;
+  color: #fff;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.25;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  z-index: 10;
+  white-space: nowrap;
+  display: none;
+  pointer-events: none;
+}
+
+.btn-wrap[data-tooltip]:not([data-tooltip=""]):hover::after {
+  display: block;
+}

@@ -1,0 +1,22 @@
+{
+  "name": "@emanuelegissi/widget-actionbuttons",
+  "description": "Configurable buttons that send user actions to the data engine.",
+  "homePage": "https://github.com/emanuelegissi/my-grist-widget",
+  "version": "0.0.1",
+  "grist": {
+    "name": "Action buttons",
+    "url": "https://emanuelegissi.github.io/my-grist-widget/flowbuttons/index.html",
+    "widgetId": "@emanuelegissi/widget-actionbuttons",
+    "published": true,
+    "accessLevel": "full",
+    "renderAfterReady": true,
+    "description": "Show configurable buttons that send user actions to the data engine.",
+    "authors": [
+      {
+        "name": "Emanuele Gissi",
+        "url": "https://github.com/emanuelegissi"
+      }
+    ],
+    "isGristLabsMaintained": false
+  }
+}
