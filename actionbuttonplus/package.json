@@ -1,6 +1,6 @@
 {
   "name": "@emanuelegissi/widget-actionbuttonplus",
-  "description": "A configurable coloured button that sends user actions to the data engine, and set the cursor to any new record.",
+  "description": "Configurable coloured buttons that sends user actions (e.g. \"AddRecord\") to the data engine, and set the cursor to any new record.",
   "homePage": "https://github.com/emanuelegissi/my-grist-widget",
   "version": "0.0.1",
   "grist": {
@@ -10,7 +10,7 @@
     "published": true,
     "accessLevel": "full",
     "renderAfterReady": true,
-    "description": "Build one or more coloured buttons that send customizable actions (e.g. \"AddRecord\") to the Grist data engine.",
+    "description": "Build coloured buttons that sends user actions (e.g. \"AddRecord\") to the data engine.",
     "authors": [
       {
         "name": "Emanuele Gissi",

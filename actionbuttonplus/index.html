@@ -1,50 +1,38 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <title>Grist Action Button Plus</title>
 
-    <!-- Uses Vue.js and the Grist Plugin API -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/2.5.3/vue.min.js"></script>
-    <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<head>
+  <meta charset="utf-8">
+  <title>Grist Action Button Plus</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/2.5.3/vue.min.js"></script>
+  <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+  <link rel="stylesheet" href="actionbuttonplus.css?ver=3">
+  <script src="actionbuttonplus.js?ver=3"></script>
+</head>
 
-    <link rel="stylesheet" href="actionbuttonplus.css?ver=3">
-    <script src="actionbuttonplus.js?ver=3"></script>
-  </head>
-
-  <body>
-    <div id="app">
-      <div class="status" v-if="status">
-        <template v-if="status === 'waiting'">
-          <p>Waiting for data...</p>
-        </template>
-        <template v-else>
-          {{ status }}
-        </template>
-      </div>
-
+<body>
+  <div id="app">
+    <div class="status" v-if="status">
+      <template v-if="status === 'waiting'">
+        <p>Waiting for data...</p>
+      </template>
       <template v-else>
-        <div class="container">
-          <span
-            class="btn-wrap"
-            v-for="(input, idx) in inputs"
-            :key="idx"
-            :data-tooltip="input.description || ''"
-          >
-            <button
-              class="grist-btn"
-              type="button"
-              v-on:click="applyActions(input.actions)"
-              :style="buttonStyle(input)"
-            >
-              {{ input.button }}
-            </button>
-          </span>
-        </div>
-
-        <div class="result" v-if="result">{{ result }}</div>
+        {{ status }}
       </template>
     </div>
-  </body>
-</html>
 
+    <template v-else>
+      <div class="container">
+        <span class="btn-wrap" v-for="(input, idx) in inputs" :key="idx" :data-tooltip="input.description || ''">
+          <button class="grist-btn" type="button" v-on:click="applyActions(input.actions)" :style="buttonStyle(input)">
+            {{ input.button }}
+          </button>
+        </span>
+      </div>
+
+      <div class="result" v-if="result">{{ result }}</div>
+    </template>
+  </div>
+</body>
+
+</html>
