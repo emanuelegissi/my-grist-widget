@@ -67,7 +67,7 @@ body {
 .btn-wrap[data-tooltip]:not([data-tooltip=""])::after {
   content: attr(data-tooltip);
   position: absolute;
-  right: +1px;
+  left: calc(100% +1px);
   top: calc(30%);
   transform: none;
   background: #3b3b3b;
