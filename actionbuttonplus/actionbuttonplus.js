@@ -7,8 +7,7 @@ function ready(fn) {
 }
 
 const column = 'ActionButton';
-let app;
-
+let app = undefined;
 let data = {
   status: 'waiting',
   result: null,
@@ -16,7 +15,7 @@ let data = {
     description: null,
     button: null,
     actions: null,
-    color: null,     // optional: CSS color string
+    color: null,
   }],
 };
 
@@ -55,12 +54,11 @@ async function applyActions(actions) {
 
       const newRowId =
         (typeof rv === "number" && Number.isFinite(rv)) ? rv :
-        (rv && typeof rv === "object" && typeof rv.id === "number") ? rv.id :
-        null;
+          (rv && typeof rv === "object" && typeof rv.id === "number") ? rv.id :
+            null;
 
       if (newRowId != null) {
         await grist.setCursorPos({ rowId: newRowId });
-        await grist.setSelectedRows([newRowId]);
       }
     }
 
@@ -129,7 +127,7 @@ function onRecord(row, mappings) {
   }
 }
 
-ready(function() {
+ready(function () {
   // Update the widget anytime the document data changes.
   grist.ready({
     requiredAccess: "full",
@@ -159,4 +157,3 @@ ready(function() {
     }
   });
 });
-
