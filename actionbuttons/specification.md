@@ -88,8 +88,6 @@ This action creates/selects a new record by setting the cursor position to:
 await grist.setCursorPos({ rowId: "new" });
 ```
 
----
-
 ### Go to page action
 
 A Go to page action is:
@@ -118,3 +116,52 @@ The widget alerts errors when:
 * a button is missing required keys (`button`, `actions`) or has invalid types
 * any item in `actions` is not one of the supported action formats above
 
+## Example actionCol
+
+```python
+BS = []  # buttons
+
+def nb(label, desc, color="Green"):  # new record button
+  acts = (("NewRecord",),)
+  BS.append({"button": label, "description": desc, "actions": acts, "color": color})
+
+def lb(label, desc, url, color=None):  # link page button
+  acts = (("Link", url, "_blank"),)
+  BS.append({"button": label, "description": desc, "actions": acts, "color": color})
+
+def ab(label, desc, table, fs=None, color="Green"):  # add record button
+  fs = fs is not None and fs or {}
+  acts = (("AddRecord", table, None, fs),)
+  BS.append({"button": label, "description": desc, "actions": acts, "color": color})
+
+def rb(label, desc, table, rs=None, fs=None, color="Red"):  # rm record button
+  if rs is None:
+    if not rec: return
+    rs = [rec]
+  fs = fs is not None and fs or {}
+  acts = (("BulkRemoveRecord", table, [r.id for r in rs]),)
+  BS.append({"button": label, "description": desc, "actions": acts, "color": color})
+
+def ub(label, desc, table, rs=None, fs=None, color=None):  # update record button
+  if rs is None:
+    if not rec: return
+    rs = [rec]
+  fs = fs is not None and fs or {}
+  acts = (("BulkUpdateRecord", table, [r.id for r in rs], {k: [v, ] * len(rs) for k, v in fs.items()}),)  
+  BS.append({"button": label, "description": desc, "actions": acts, "color": color})
+
+# Buttons
+
+nb("+", "Crea dichiarazione")
+
+if not $Ha_prestazioni:
+    rb("Elimina", "Elimina dichiarazione", "Dichiarazioni")
+else:
+  if not $Errori:
+    ub("Invia a TEP", "Firma e invia tutte le prestazioni", "Prestazioni",
+      rs=[r for r in Prestazioni.lookupRecords(Dichiarazione=$id, Stato="Bozza") if not r.Errori],
+      fs={"Stato": "TEP"},
+    )
+
+return BS
+```
