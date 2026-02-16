@@ -1,29 +1,32 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Grist Action Buttons</title>
   <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
   <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-  <script src="script.js"></script>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css" />
 </head>
 
 <body>
   <div id="app">
     <div class="container">
-      <div class="btn-wrap" v-for="btn in btns" :key="btn.id" :data-tooltip="btn.desc || ''">
+      <div class="btn-wrap"
+           v-for="btn in btns"
+           :key="btn.id"
+           :data-tooltip="btn.desc || ''">
         <button class="abbtn"
-          v-for="btn in btns"
-          :key="btn.id"
-          :disabled="busy || btn.disabled"
-          @click="btn.onclick">
+                :style="{ backgroundColor: btn.color }"
+                :disabled="busy || btn.disabled"
+                @click="btn.onclick">
           {{ btn.label }}
         </button>
       </div>
     </div>
   </div>
-</body>
 
+  <!-- Load your script after the DOM (recommended) -->
+  <script src="script.js"></script>
+</body>
 </html>
+

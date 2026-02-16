@@ -60,7 +60,6 @@ body {
   position: absolute;
   left: calc(100% + 2px);
   top: 30%;
-  transform: translateY(-30%);
   transform: none;
   background: #3b3b3b;
   color: #fff;
