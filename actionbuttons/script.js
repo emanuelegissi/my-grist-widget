@@ -1,244 +1,286 @@
 "use strict";
 
-const config = {  // configuration: stores widget mapping 
-  actionsCol: null, // real column id of the mapped "actionsCol"
+/* =========================
+   STATE (Vue 3)
+========================= */
+
+const state = {
+  btns: Vue.reactive([]),
+  busy: Vue.ref(false),
 };
 
-const data = {  // reactive UI state for Vue 3
-  btns: Vue.reactive([]), // list of {id,label,desc,color,onclick}
-  busy: Vue.ref(false),   // disables buttons while applying actions
-  err: Vue.ref(""),       // single error text shown in the widget
-};
+/* =========================
+   ERRORS
+========================= */
 
-function clearErr() {
-  data.err.value = "";
-}
-
-function handleErr(text) {
+function fail(text) {
   const msg = String(text);
   console.error(msg);
-  data.err.value = msg;
+  alert(msg);
 }
 
-/**
- * Grist UserAction tuple looks like [Action name, Table, Records, Values]
- *  - Action name: the name of the action
- *  - Table: the name (id) of the table
- *  - Records: an id or an array of ids of the records (corresponds to $id)
- *  - Values: a dictionary of column names and their new values
- * See all actions in: grist-core/app/common/DocActions.ts
- * Examples:
- *   ["AddRecord", "Table1", null, {"Name": "Alice", "Age": 20}],
- *   ["RemoveRecord", "Table1", 18]
- *   ["BulkUpdateRecord", "Table1", [1, 2, 3], {"Name": ["A","B","C"], "Age": [1, 2, 3]}]
- */
+/* =========================
+   TYPE CHECKS
+========================= */
+
+function isPlainObject(x) {
+  return x != null && typeof x === "object" && !Array.isArray(x);
+}
+
 function isUserActionTuple(x) {
   return Array.isArray(x) && typeof x[0] === "string" && x.length >= 2;
 }
 
-/**
- * Cell can be:
- *  - null/undefined => []
- *  - object => [object]
- *  - array => array
- */
-function normalizeBtnsCell(cell) {
+function isNewRecordAction(x) {
+  return Array.isArray(x) && x[0] === "NewRecord";
+}
+
+function isLinkAction(x) {
+  return (
+    Array.isArray(x) &&
+    x[0] === "Link" &&
+    typeof x[1] === "string" &&
+    (x[2] == null || typeof x[2] === "string")
+  );
+}
+
+function isSupportedActionItem(x) {
+  return isUserActionTuple(x) || isNewRecordAction(x) || isLinkAction(x);
+}
+
+/* =========================
+   NORMALIZE CELL -> [buttons]
+========================= */
+
+function normalizeButtonsCell(cell) {
   if (cell == null) return [];
   if (Array.isArray(cell)) return cell;
-  if (typeof cell === "object") return [cell];
-  return [];
+  if (isPlainObject(cell)) return [cell];
+  throw new Error(`The actionCol cell must be null, a button object, or an array of button objects.`);
+}
+
+/* =========================
+   EXECUTION
+========================= */
+
+function execLink(url, target) {
+  if (!target) window.location.href = url;
+  else window.open(url, target);
+}
+
+async function applyUserActionsOnce(userActions) {
+  if (!userActions.length) return;
+
+  // table linked to this widget
+  let selectedTableId = null;
+  try {
+    selectedTableId = await grist.selectedTable.getTableId();
+  } catch {
+    selectedTableId = null;
+  }
+
+  // last AddRecord that targets selected table
+  let addRecordIndex = null;
+  for (let i = userActions.length - 1; i >= 0; i--) {
+    const a = userActions[i];
+    if (Array.isArray(a) && a[0] === "AddRecord" && a[1] === selectedTableId) {
+      addRecordIndex = i;
+      break;
+    }
+  }
+
+  const res = await grist.docApi.applyUserActions(userActions);
+  const retValues = res && Array.isArray(res.retValues) ? res.retValues : null;
+
+  // select last created record (only if it was in the widget-linked table)
+  if (retValues && addRecordIndex != null) {
+    const rv = retValues[addRecordIndex];
+
+    const newRowId =
+      (typeof rv === "number" && Number.isFinite(rv)) ? rv :
+      (rv && typeof rv === "object" && typeof rv.id === "number") ? rv.id :
+      null;
+
+    if (newRowId != null) {
+      await grist.setCursorPos({ rowId: newRowId });
+    }
+  }
 }
 
 /**
- * Apply UserActions and select the last AddRecord row if present.
+ * Simplified rule:
+ * 1) Run ALL user actions in ONE batch (if any).
+ * 2) Then run remaining actions in order: NewRecord / Link.
  */
-async function applyActions(actions) {
-  // Prevent double-click / concurrent runs
-  if (data.busy.value) return;
-  data.busy.value = true;
+async function runActions(actions) {
+  const userActions = [];
+  const postActions = [];
 
-  // Clear any previous error only when we actually start
-  clearErr();
-
-  // Record indexes of AddRecord actions to find created row ids afterwards
-  const addRecordIndexes = [];
-  for (let i = 0; i < (actions || []).length; i++) {
-    const a = actions[i];
-    if (Array.isArray(a) && a[0] === "AddRecord") addRecordIndexes.push(i);
+  for (const a of actions) {
+    if (!isSupportedActionItem(a)) {
+      throw new Error(
+        `Invalid action item. Allowed: UserAction tuple ["Action","Table",...], ["NewRecord"], ["Link", url, target?].`
+      );
+    }
+    if (isNewRecordAction(a) || isLinkAction(a)) postActions.push(a);
+    else userActions.push(a); // user action tuple
   }
 
-  try {
-    const res = await grist.docApi.applyUserActions(actions);
-    const retValues = res && Array.isArray(res.retValues) ? res.retValues : null;
+  await applyUserActionsOnce(userActions);
 
-    // If AddRecord happened, try to select the last created row
-    if (retValues && addRecordIndexes.length) {
-      const idx = addRecordIndexes[addRecordIndexes.length - 1];
-      const rv = retValues[idx];
-
-      // retValues entry might be a number or {id: number} depending on API behavior
-      const newRowId =
-        (typeof rv === "number" && Number.isFinite(rv)) ? rv :
-          (rv && typeof rv === "object" && typeof rv.id === "number") ? rv.id :
-            null;
-
-      if (newRowId != null) {
-        await grist.setCursorPos({ rowId: newRowId });
-      }
+  for (const a of postActions) {
+    if (isNewRecordAction(a)) {
+      await grist.setCursorPos({ rowId: "new" });
+    } else if (isLinkAction(a)) {
+      execLink(a[1], a[2]);
     }
+  }
+}
+
+async function onClickButton(model) {
+  if (state.busy.value || model.disabled) return;
+
+  state.busy.value = true;
+  try {
+    await runActions(model._actions);
   } catch (e) {
-    handleErr(`Grant full access for writing. (${String(e).replace(/^Error:\s*/, "")})`);
+    fail(String(e).replace(/^Error:\s*/, ""));
   } finally {
-    data.busy.value = false;
+    state.busy.value = false;
   }
 }
 
-/**
- * Valid button object shape (description/color optional):
- * {
- *   button: "Label",                  // required
- *   actions: [["UpdateRecord",...]],  // required
- *   description: "Tooltip",           // optional
- *   color: "#1486ff"                // optional
- * }
- */
-async function updateBtns(record, mappings) {
-  try {
-    const row = record;
+/* =========================
+   VALIDATE + BUILD UI MODELS
+========================= */
 
-    // Resolve the real table column id from mapping.
-    // mappings: { actionsCol: "<actualColumnId>" }
-    const mappedColId = (mappings && mappings.actionsCol) ? mappings.actionsCol : config.actionsCol;
+function buildButtons(cellValue, rowId) {
+  const raw = normalizeButtonsCell(cellValue);
+  const built = [];
 
-    // No mapping set yet => cannot proceed
-    if (!mappedColId) {
-      data.btns.length = 0;
-      handleErr("Missing column mapping in widget settings.");
-      return;
+  for (let i = 0; i < raw.length; i++) {
+    const b = raw[i];
+
+    if (!isPlainObject(b)) throw new Error(`Each button must be an object.`);
+
+    if (typeof b.button !== "string" || !b.button.trim()) {
+      throw new Error(`Each button must have a non-empty string key "button".`);
     }
 
-    // No record selected (or not an object) => no buttons, no error
-    if (!row || typeof row !== "object") {
-      data.btns.length = 0;
-      clearErr();
-      return;
+    if (!Array.isArray(b.actions)) {
+      throw new Error(`Button "${b.button}" must have key "actions" as an array.`);
     }
 
-    // Column not visible in current view => error (and no buttons)
-    if (!Object.prototype.hasOwnProperty.call(row, mappedColId)) {
-      data.btns.length = 0;
-      handleErr(`Mapped column "${mappedColId}" is not visible.`);
-      return;
+    if (b.description != null && typeof b.description !== "string") {
+      throw new Error(`Button "${b.button}": optional "description" must be a string.`);
     }
 
-    // Read and normalize the cell value into a list
-    const rawBtns = normalizeBtnsCell(row[mappedColId]);
+    if (b.color != null && typeof b.color !== "string") {
+      throw new Error(`Button "${b.button}": optional "color" must be a string.`);
+    }
 
-    // Validate + build UI model
-    const built = [];
-
-    for (let i = 0; i < rawBtns.length; i++) {
-      const btn = rawBtns[i];
-
-      // Require only: button + actions
-      if (!btn || typeof btn !== "object" || !btn.button || !btn.actions) {
+    // Validate action items
+    for (const a of b.actions) {
+      if (!isSupportedActionItem(a)) {
         throw new Error(
-          `Each item must be an object with required keys "button" and "actions".`
+          `Button "${b.button}" has an invalid action item. ` +
+          `Allowed: UserAction tuple ["Action","Table",...], ["NewRecord"], ["Link", url, target?].`
         );
       }
-
-      // Validate actions list
-      if (!Array.isArray(btn.actions) || !btn.actions.every(isUserActionTuple)) {
-        throw new Error(
-          `Invalid "actions". Expected an array of UserActions like [["AddRecord","Table1",null,{...}]]`
-        );
-      }
-
-      // Optional description
-      if (btn.description != null && typeof btn.description !== "string") {
-        throw new Error(`Optional "description" must be a string.`);
-      }
-
-      // Optional color
-      if (btn.color != null && typeof btn.color !== "string") {
-        throw new Error(`Optional "color" must be a string (e.g. "#1486ff").`);
-      }
-
-      // Build the object your HTML expects
-      built.push({
-        id: `${row.id || "row"}-${i}`,                 // stable enough for v-for key
-        label: String(btn.button),
-        desc: btn.description == null ? "" : String(btn.description),
-        color: btn.color == null ? "" : String(btn.color),
-        onclick: () => applyActions(btn.actions),
-      });
     }
 
-    // Replace reactive array contents (keeps Vue reactivity)
-    data.btns.length = 0;
-    data.btns.push(...built);
+    const model = {
+      id: `${rowId || "row"}-${i}`,
+      label: b.button,
+      desc: b.description ?? "",
+      color: b.color ?? "",
+      disabled: b.actions.length === 0,
+      _actions: b.actions,
+      onclick: null,
+    };
 
-    // Success => clear stale error
-    clearErr();
-  } catch (e) {
-    data.btns.length = 0;
-    handleErr(String(e).replace(/^Error:\s*/, ""));
+    model.onclick = () => onClickButton(model);
+    built.push(model);
   }
+
+  return built;
 }
 
-async function loadVueApp() {
-  const { createApp } = Vue;
-
-  const app = createApp({
-    data() {
-      return {
-        btns: data.btns,
-        busy: data.busy,
-        err: data.err,
-      };
-    },
-  });
-
-  app.mount("#app");
-}
+/* =========================
+   GRIST -> UI
+========================= */
 
 function onRecord(record, mappings) {
-  // Store mapping for later calls
-  if (mappings && mappings.actionsCol) {
-    config.actionsCol = mappings.actionsCol;
-  }
+  try {
+    const colId = mappings?.actionCol;
+    if (!colId) throw new Error(`Missing column mapping in widget settings (actionCol).`);
 
-  updateBtns(record, mappings);
+    if (!record || typeof record !== "object") {
+      state.btns.length = 0;
+      return;
+    }
+
+    if (!Object.prototype.hasOwnProperty.call(record, colId)) {
+      throw new Error(`Mapped column "${colId}" is not visible in the current view.`);
+    }
+
+    const built = buildButtons(record[colId], record.id);
+    state.btns.length = 0;
+    state.btns.push(...built);
+  } catch (e) {
+    state.btns.length = 0;
+    fail(String(e).replace(/^Error:\s*/, ""));
+  }
 }
 
 function onNewRecord() {
-  data.btns.length = 0;
-  data.busy.value = false;
-  clearErr();
+  state.btns.length = 0;
 }
+
+/* =========================
+   VUE APP
+========================= */
+
+function loadVueApp() {
+  const { createApp } = Vue;
+  createApp({
+    data() {
+      return { btns: state.btns, busy: state.busy };
+    },
+  }).mount("#app");
+}
+
+/* =========================
+   BOOTSTRAP
+========================= */
 
 function ready(fn) {
   if (document.readyState !== "loading") fn();
   else document.addEventListener("DOMContentLoaded", fn);
 }
 
-ready(async function () {
+ready(() => {
   loadVueApp();
 
   grist.onRecord(onRecord);
   grist.onNewRecord(onNewRecord);
+
   grist.ready({
+    requiredAccess: "full",
+    allowSelectBy: true,
     columns: [
       {
-        name: "actionsCol",
+        name: "actionCol",
         title: "Actions",
         optional: false,
         type: "Any",
-        description: "Button object or array of button objects (with UserActions).",
+        description:
+          "Null, a button object, or an array of button objects. " +
+          'Button: {button, actions, description?, color?}. ' +
+          'Actions: UserAction tuples, ["NewRecord"], ["Link", url, target?].',
         allowMultiple: false,
       },
     ],
-    requiredAccess: "full",
-    allowSelectBy: true,
   });
 });
+

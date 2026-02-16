@@ -14,13 +14,14 @@
   <div id="app">
     <div class="container">
       <div class="btn-wrap" v-for="btn in btns" :key="btn.id" :data-tooltip="btn.desc || ''">
-        <button class="abbtn" :style="{ backgroundColor: btn.color }" :disabled="busy" @click="btn.onclick">
+        <button class="abbtn"
+          v-for="btn in btns"
+          :key="btn.id"
+          :disabled="busy || btn.disabled"
+          @click="btn.onclick">
           {{ btn.label }}
         </button>
       </div>
-    </div>
-    <div class="container" v-if="err">
-      <div class="abpara">{{ err }}</div>
     </div>
   </div>
 </body>

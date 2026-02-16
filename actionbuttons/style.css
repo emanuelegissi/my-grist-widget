@@ -12,15 +12,6 @@ body {
   padding: 3px;
 }
 
-.abpara {
-  display: block;
-  color: #c00;
-  padding: 0;
-  margin: 0;
-  font-size: 13px;
-  font-family: inherit;
-}
-
 .abbtn {
   display: inline-flex;
   align-items: center;
