@@ -190,7 +190,7 @@ function buildButtons(cellValue, rowId) {
     }
 
     const model = {
-      id: `${rowId || "row"}-${i}`,
+      id: `${rowId || "row"}-${i}-${JSON.stringify(b)}`,
       label: b.button,
       desc: b.description ?? "",
       color: b.color ?? "",
