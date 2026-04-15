@@ -154,6 +154,17 @@ async function onClickButton(model) {
    VALIDATE + BUILD UI MODELS
 ========================= */
 
+function makeBtnKey(rowId, i, b) {
+  return [
+    rowId || "row",
+    i,
+    b.button,
+    b.color ?? "",
+    b.actions.length,
+    b.description ?? ""
+  ].join("|");
+}
+
 function buildButtons(cellValue, rowId) {
   const raw = normalizeButtonsCell(cellValue);
   const built = [];
@@ -190,7 +201,7 @@ function buildButtons(cellValue, rowId) {
     }
 
     const model = {
-      id: `${rowId || "row"}-${i}-${JSON.stringify(b)}`,
+      id: makeBtnKey(rowId, i, b),
       label: b.button,
       desc: b.description ?? "",
       color: b.color ?? "",
