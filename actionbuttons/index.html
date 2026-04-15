@@ -16,7 +16,7 @@
            :key="btn.id"
            :data-tooltip="btn.desc || ''">
         <button class="abbtn"
-                :style="{ backgroundColor: btn.color }"
+                :style="btn.color ? { backgroundColor: btn.color } : {}"
                 :disabled="busy || btn.disabled"
                 @click="btn.onclick">
           {{ btn.label }}
