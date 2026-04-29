@@ -23,6 +23,11 @@ The widget is designed to look and behave similarly to a standard Grist table, w
 - Optionally highlights rows using an `Error` boolean column.
 - Handles cycles and unreachable records defensively.
 
+## Installation
+
+Use it by inserting the following link as widget custom URL:
+https://emanuelegissi.github.io/my-grist-widget/tree-viewer
+
 ## Required Table Structure
 
 The source table must contain records arranged in a self-referencing hierarchy.
