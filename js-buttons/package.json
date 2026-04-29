@@ -1,0 +1,22 @@
+{
+  "name": "@emanuelegissi/js-buttons",
+  "description": "Javascript buttons.",
+  "homePage": "https://github.com/emanuelegissi/my-grist-widget",
+  "version": "0.0.1",
+  "grist": {
+    "name": "JS buttons",
+    "url": "https://emanuelegissi.github.io/my-grist-widget/js-buttons/index.html",
+    "widgetId": "@emanuelegissi/js-buttons",
+    "published": true,
+    "accessLevel": "full",
+    "renderAfterReady": true,
+    "description": "Javascript buttons.",
+    "authors": [
+      {
+        "name": "Emanuele Gissi",
+        "url": "https://github.com/emanuelegissi"
+      }
+    ],
+    "isGristLabsMaintained": false
+  }
+}

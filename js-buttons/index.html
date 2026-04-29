@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Grist Dynamic Buttons</title>
+  <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+
+  <!-- CodeMirror -->
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css"
+  />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/selection/active-line.min.js"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <div id="app">
+    <main class="widget-shell">
+      <div id="buttonRow" class="button-row"></div>
+      <div id="status" class="status hidden"></div>
+    </main>
+
+    <button
+      id="openConfigButton"
+      type="button"
+      class="grist-button config-trigger"
+      aria-label="Configure buttons"
+    >
+      <span class="config-trigger-icon">⚙</span>
+    </button>
+
+    <section
+      id="configPanel"
+      class="config-panel hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="configTitle"
+    >
+      <div class="config-card">
+        <header class="config-header">
+          <h1 id="configTitle">Buttons configuration</h1>
+          <p>Define a JavaScript function named <code>get_buttons(input)</code>.</p>
+        </header>
+
+        <div class="config-body">
+          <label for="configEditor">JavaScript</label>
+
+          <div id="editorHost" class="code-editor-host"></div>
+
+          <textarea
+            id="configEditor"
+            class="config-editor hidden"
+            spellcheck="false"
+          ></textarea>
+
+          <div class="config-help">
+            Each active button must include <code>label</code> and <code>onclick</code>.
+            Optional button properties are:
+            <code>title</code>,
+            <code>color</code>,
+            <code>background_color</code>,
+            <code>disabled</code>.
+            The <code>color</code> property controls text color.
+          </div>
+
+          <div id="configError" class="config-error hidden"></div>
+        </div>
+
+        <footer class="config-footer">
+          <button id="resetConfigButton" type="button" class="grist-button">
+            Reset example
+          </button>
+          <button id="cancelConfigButton" type="button" class="grist-button">
+            Cancel
+          </button>
+          <button id="saveConfigButton" type="button" class="grist-button">
+            Save
+          </button>
+        </footer>
+      </div>
+    </section>
+  </div>
+
+  <script src="./script.js"></script>
+</body>
+</html>

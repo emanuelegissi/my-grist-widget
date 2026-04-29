@@ -1,0 +1,22 @@
+{
+  "name": "@emanuelegissi/widget-treeviewer",
+  "description": "Viewer for a one-to-many self-referencing table as a collapsible tree.",
+  "homePage": "https://github.com/emanuelegissi/my-grist-widget",
+  "version": "0.0.1",
+  "grist": {
+    "name": "Tree viewer",
+    "url": "https://emanuelegissi.github.io/my-grist-widget/tree-viewer/index.html",
+    "widgetId": "@emanuelegissi/widget-treeviewer",
+    "published": true,
+    "accessLevel": "full",
+    "renderAfterReady": true,
+    "description": "Viewer for a one-to-many self-referencing table as a collapsible tree.",
+    "authors": [
+      {
+        "name": "Emanuele Gissi",
+        "url": "https://github.com/emanuelegissi"
+      }
+    ],
+    "isGristLabsMaintained": false
+  }
+}

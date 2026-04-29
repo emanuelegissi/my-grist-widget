@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Grist Tree Viewer</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+  <div id="app" class="tree-widget" v-cloak>
+    <div v-if="status" class="message" :class="{ error: isError }">
+      {{ status }}
+    </div>
+
+    <div v-else class="table-scroll">
+      <table
+        class="grist-like-table"
+        :style="{ width: totalTableWidth + 'px' }"
+      >
+        <colgroup>
+          <col :style="{ width: columnWidth('__label') + 'px' }" />
+
+          <col
+            v-for="col in dataColumns"
+            :key="'col:' + col"
+            :style="{ width: columnWidth(col) + 'px' }"
+          />
+        </colgroup>
+
+        <thead>
+          <tr>
+            <th
+              class="tree-column"
+              :class="{ 'column-selected': selectedCol === '__label' }"
+              :style="columnStyle('__label')"
+            >
+              <div class="header-cell">
+                <button
+                  v-if="headerDescription('__label')"
+                  type="button"
+                  class="header-info"
+                  aria-label="Column description"
+                  @click.stop="toggleHint('__label')"
+                ></button>
+
+                <div
+                  v-if="headerDescription('__label')"
+                  class="header-hint"
+                  :class="{ pinned: isHintOpen('__label') }"
+                >
+                  {{ headerDescription('__label') }}
+                </div>
+
+                <span class="header-title">
+                  {{ headerTitle('__label') }}
+                </span>
+
+                <span
+                  class="column-resizer"
+                  :class="{ active: resizing && resizing.col === '__label' }"
+                  @mousedown.prevent.stop="startResize('__label', $event)"
+                ></span>
+              </div>
+            </th>
+
+            <th
+              v-for="col in dataColumns"
+              :key="col"
+              :class="{ 'column-selected': selectedCol === col }"
+              :style="columnStyle(col)"
+            >
+              <div class="header-cell">
+                <button
+                  v-if="headerDescription(col)"
+                  type="button"
+                  class="header-info"
+                  aria-label="Column description"
+                  @click.stop="toggleHint(col)"
+                ></button>
+
+                <div
+                  v-if="headerDescription(col)"
+                  class="header-hint"
+                  :class="{ pinned: isHintOpen(col) }"
+                >
+                  {{ headerDescription(col) }}
+                </div>
+
+                <span class="header-title">
+                  {{ headerTitle(col) }}
+                </span>
+
+                <span
+                  class="column-resizer"
+                  :class="{ active: resizing && resizing.col === col }"
+                  @mousedown.prevent.stop="startResize(col, $event)"
+                ></span>
+              </div>
+            </th>
+          </tr>
+        </thead>
+
+        <tbody>
+          <tr
+            v-for="row in visibleRows"
+            :key="row.record.id"
+            :class="{
+              selected: Number(row.record.id) === selectedId,
+              'error-row': recordHasError(row.record)
+            }"
+            @click="selectCell(row.record, '__label')"
+          >
+            <td
+              class="tree-cell"
+              :class="{ saving: isSaving(row.record, '__label') }"
+              :style="columnStyle('__label')"
+            >
+              <div
+                class="tree-line"
+                :style="{ paddingLeft: (row.level * indentPx) + 'px' }"
+              >
+                <button
+                  v-if="hasChildren(row.record.id)"
+                  type="button"
+                  class="tree-toggle"
+                  :aria-expanded="isExpanded(row.record.id)"
+                  @click.stop="toggle(row.record.id)"
+                >
+                  {{ isExpanded(row.record.id) ? "▾" : "▸" }}
+                </button>
+
+                <span v-else class="tree-toggle-placeholder"></span>
+
+                <input
+                  v-if="!isFormulaColumn(labelColumnId)"
+                  class="tree-label-input"
+                  :value="rawLabelValue(row.record)"
+                  :placeholder="`(row ${row.record.id})`"
+                  @click.stop="selectCell(row.record, '__label')"
+                  @change="commitLabel(row.record, $event.target.value)"
+                  @keydown.enter="$event.target.blur()"
+                  @keydown.esc="resetInput($event, row.record.__treeLabel)"
+                />
+
+                <span
+                  v-else
+                  class="tree-label"
+                >
+                  {{ labelFor(row.record) }}
+                </span>
+              </div>
+            </td>
+
+            <td
+              v-for="(col, colIndex) in dataColumns"
+              :key="row.record.id + ':' + col"
+              :style="columnStyle(col)"
+              :class="cellClass(row.record, col, colIndex)"
+              @click.stop="selectCell(row.record, col)"
+            >
+              <div class="cell-editor">
+                <template v-if="isFormulaColumn(col)">
+                  <div class="cell-formula">
+                    <span class="cell-formula-badge">=</span>
+
+                    <span
+                      v-if="inputKind(cellValue(row.record, colIndex), col) === 'checkbox'"
+                      class="cell-readonly-checkbox"
+                    >
+                      <span class="widget_checkbox">
+                        <span
+                          v-if="Boolean(cellValue(row.record, colIndex))"
+                          class="widget_checkmark"
+                          style="display: block;"
+                        ></span>
+                      </span>
+                    </span>
+
+                    <span
+                      v-else
+                      class="cell-readonly-value cell-readonly-formula-value"
+                      :class="{ 'cell-readonly-number': inputKind(cellValue(row.record, colIndex), col) === 'number' }"
+                    >
+                      {{ formatValue(cellValue(row.record, colIndex)) }}
+                    </span>
+                  </div>
+                </template>
+
+                <template v-else>
+                  <label
+                    v-if="inputKind(cellValue(row.record, colIndex), col) === 'checkbox'"
+                    class="cell-checkbox-wrap"
+                    @click.stop="selectCell(row.record, col)"
+                  >
+                    <input
+                      class="cell-checkbox-native"
+                      type="checkbox"
+                      :checked="Boolean(cellValue(row.record, colIndex))"
+                      @change="commitCell(row.record, col, colIndex, $event.target.checked)"
+                    />
+
+                    <span class="widget_checkbox">
+                      <span class="widget_checkmark"></span>
+                    </span>
+                  </label>
+
+                  <input
+                    v-else
+                    class="cell-input"
+                    :class="{ 'cell-input-number': inputKind(cellValue(row.record, colIndex), col) === 'number' }"
+                    :type="inputKind(cellValue(row.record, colIndex), col)"
+                    :step="inputKind(cellValue(row.record, colIndex), col) === 'number' ? 'any' : null"
+                    :value="formatValue(cellValue(row.record, colIndex))"
+                    @change="commitCell(row.record, col, colIndex, $event.target.value)"
+                    @keydown.enter="$event.target.blur()"
+                    @keydown.esc="resetInput($event, cellValue(row.record, colIndex))"
+                  />
+                </template>
+              </div>
+            </td>
+          </tr>
+
+          <tr v-if="visibleRows.length === 0">
+            <td :colspan="1 + dataColumns.length">
+              <span class="readonly-pill">No records to display.</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div v-if="warnings.length" class="warning-list">
+      <div v-for="warning in warnings" :key="warning">
+        {{ warning }}
+      </div>
+    </div>
+  </div>
+
+
+  <!-- Load your script after the DOM (recommended) -->
+  <script src="script.js"></script>
+</body>
+</html>

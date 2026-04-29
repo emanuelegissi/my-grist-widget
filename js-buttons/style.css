@@ -1,0 +1,265 @@
+
+* {
+  box-sizing: border-box;
+}
+
+/* CodeMirror 5 needs its internal layout untouched. */
+.CodeMirror,
+.CodeMirror * {
+  box-sizing: content-box;
+}
+
+.CodeMirror {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(
+    --grist-font-family,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif
+  );
+  font-size: 13px;
+  color: var(--grist-theme-text, #262633);
+  background: var(--grist-theme-page-bg, transparent);
+}
+
+.hidden {
+  display: none !important;
+}
+
+.widget-shell {
+  width: 100%;
+  min-height: 0;
+  padding: 8px 34px 8px 8px;
+  overflow: hidden;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.grist-button {
+  appearance: none;
+  border: 1px solid var(--grist-theme-control-border, #d9d9d9);
+  border-radius: 4px;
+  background: var(--grist-theme-control-bg, #ffffff);
+  color: var(--grist-theme-text, #262633);
+  cursor: pointer;
+  font: inherit;
+  line-height: 20px;
+  min-height: 30px;
+  padding: 4px 12px;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.grist-button:hover:not(:disabled) {
+  background: var(--grist-theme-hover, #e6e6e6);
+  filter: brightness(0.94);
+}
+
+.grist-button.custom-color:hover:not(:disabled) {
+  filter: brightness(0.78);
+}
+
+.grist-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.grist-button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.config-trigger {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 900;
+
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
+  min-height: 26px;
+
+  padding: 0;
+  border-top: 0;
+  border-right: 0;
+  border-radius: 0 0 0 10px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background: var(--grist-theme-control-secondary-bg, #d9d9d9);
+  color: var(--grist-theme-light-text, #666666);
+  box-shadow: -1px 1px 3px rgba(0, 0, 0, 0.16);
+  opacity: 0.95;
+}
+
+.config-trigger:hover:not(:disabled) {
+  background: var(--grist-theme-hover, #cfcfcf);
+  opacity: 1;
+}
+
+.config-trigger-icon {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.status {
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: 4px;
+  background: var(--grist-theme-notice-bg, #f7f7f7);
+  color: var(--grist-theme-text, #262633);
+  white-space: pre-wrap;
+}
+
+.status.error {
+  background: #fff0f0;
+  color: #a10000;
+  border: 1px solid #f0b8b8;
+}
+
+.status.success {
+  background: #eef9ee;
+  color: #176117;
+  border: 1px solid #bde5bd;
+}
+
+.config-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.28);
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  padding: 18px;
+}
+
+.config-card {
+  width: min(920px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--grist-theme-page-bg, #ffffff);
+  color: var(--grist-theme-text, #262633);
+  border: 1px solid var(--grist-theme-control-border, #d9d9d9);
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+
+.config-header {
+  flex: 0 0 auto;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--grist-theme-control-border, #d9d9d9);
+}
+
+.config-header h1 {
+  margin: 0 0 4px 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.config-header p {
+  margin: 0;
+  color: var(--grist-theme-light-text, #666666);
+}
+
+.config-body {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.config-body label {
+  font-weight: 600;
+}
+
+.code-editor-host {
+  width: 100%;
+  min-height: 260px;
+  flex: 1 1 auto;
+}
+
+.config-editor {
+  width: 100%;
+  min-height: 260px;
+  flex: 1 1 auto;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.45;
+  padding: 10px;
+  color: var(--grist-theme-text, #262633);
+  background: var(--grist-theme-input-bg, #ffffff);
+  border: 1px solid var(--grist-theme-control-border, #d9d9d9);
+  border-radius: 4px;
+  tab-size: 2;
+}
+
+.CodeMirror {
+  width: 100%;
+  height: 100%;
+  min-height: 260px;
+  border: 1px solid var(--grist-theme-control-border, #d9d9d9);
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  background: var(--grist-theme-input-bg, #ffffff);
+  color: var(--grist-theme-text, #262633);
+}
+
+.CodeMirror-gutters {
+  background: var(--grist-theme-page-bg, #f7f7f7);
+  border-right: 1px solid var(--grist-theme-control-border, #d9d9d9);
+}
+
+.config-help {
+  flex: 0 0 auto;
+  color: var(--grist-theme-light-text, #666666);
+  line-height: 1.35;
+}
+
+.config-error {
+  flex: 0 0 auto;
+  color: #a10000;
+  white-space: pre-wrap;
+  max-height: 120px;
+  overflow: auto;
+}
+
+.config-footer {
+  flex: 0 0 auto;
+  padding: 12px 14px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  border-top: 1px solid var(--grist-theme-control-border, #d9d9d9);
+}
+

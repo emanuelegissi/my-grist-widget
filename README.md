@@ -99,3 +99,8 @@ See an application example [here](https://docs.getgrist.com/iFLERrF5h1rd/Approva
 Use it by inserting the following link as widget custom URL:
 https://emanuelegissi.github.io/my-grist-widget/mermaid-viewer
 
+## JS buttons widget
+
+This widget displays a row of configurable JavaScript buttons. It is an evolution of the Actionbuttons widget.
+
+See its documentation and application example [here]().
