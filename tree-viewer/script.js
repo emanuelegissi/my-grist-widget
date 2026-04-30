@@ -52,9 +52,9 @@ const GRIST_COLUMNS = [
   {
     name: "Error",
     title: "Error",
-    type: "Bool",
+    type: "Bool,Text",
     optional: true,
-    description: "Optional boolean column. When true, the row is highlighted as an error."
+    description: "Optional boolean or text column. When true, the row is highlighted as an error."
   }
 ];
 
