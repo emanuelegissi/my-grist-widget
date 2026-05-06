@@ -1,33 +1,30 @@
 "use strict";
 
 /*
-  Grist column mappings:
+  Tree Table Grist Custom Widget
+  --------------------------------
 
-  Parent
-    Self-reference parent column.
-    It may be a Ref column or an Int column.
-    onRecords uses expandRefs:false so Ref values arrive as row IDs.
+  This widget displays a self-referencing Grist table as a collapsible tree.
 
-  Label
-    Editable text label shown in the tree.
+  Each record has:
+    - a Parent column pointing to another record in the same table;
+    - a Label column shown as the tree label;
+    - optional extra columns displayed as editable table columns;
+    - an optional Error column used to color the whole row.
 
-  Columns
-    Optional multi-column mapping.
-    The user chooses the editable columns to show in the table area.
-    Supported simple types: Text, Int, Numeric, Bool.
-
-  Error
-    Optional Bool column.
-    When true, the whole record row is highlighted with #FD8182.
-    It is shown only if the same source column is also selected in "Shown columns".
-
-  Notes:
-    - Column labels/descriptions/formula flags are read from Grist metadata tables when available.
-    - Formula columns are displayed read-only with a small "=" badge.
-    - Column widths are local widget options and are persisted per widget instance.
-    - The selected column header is highlighted through selectedCol.
+  The widget also:
+    - persists expanded/collapsed branches;
+    - persists custom widget column widths;
+    - reads Grist column metadata to show labels, descriptions, and formula status;
+    - renders formula columns as read-only;
+    - synchronizes selection with the Grist cursor.
 */
 
+/*
+  Column mappings shown in the Grist widget configuration panel.
+
+  These definitions tell Grist which columns the user may map to the widget.
+*/
 const GRIST_COLUMNS = [
   {
     name: "Parent",
@@ -58,18 +55,39 @@ const GRIST_COLUMNS = [
   }
 ];
 
+/*
+  Widget option keys.
+
+  Grist widget options are persisted per widget instance.
+*/
 const OPTION_EXPANDED = "expandedRowIds";
 const OPTION_WIDTHS = "columnWidths";
 
+/*
+  Column width defaults.
+
+  MIN_COLUMN_WIDTH controls how small a column can become while resizing.
+*/
 const MIN_COLUMN_WIDTH = 35;
 const DEFAULT_LABEL_WIDTH = 280;
 const DEFAULT_DATA_WIDTH = 100;
 
+/*
+  Convert a value to a positive integer row ID.
+
+  Returns null for invalid IDs.
+*/
 function toPositiveInt(value) {
   const n = Number(value);
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
+/*
+  Normalize a Grist reference-like value to a row ID.
+
+  With expandRefs:false, Ref columns normally arrive as row IDs.
+  This function is defensive and also handles possible array/object shapes.
+*/
 function rowIdOf(value) {
   if (
     value === null ||
@@ -96,6 +114,11 @@ function rowIdOf(value) {
   return toPositiveInt(value);
 }
 
+/*
+  Convert a cell value to a display string.
+
+  Objects are JSON-stringified when possible.
+*/
 function stringifyCell(value) {
   if (value === null || value === undefined) {
     return "";
@@ -112,10 +135,25 @@ function stringifyCell(value) {
   return String(value);
 }
 
+/*
+  Compare two values in a simple stable way.
+
+  This is sufficient for the simple supported cell types used by the widget.
+*/
 function sameValue(a, b) {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+/*
+  Normalize the multi-column mapping for "Shown columns".
+
+  Grist may return either:
+    - undefined/null when no column is mapped;
+    - a single string;
+    - an array of strings.
+
+  The widget always wants an array of column IDs.
+*/
 function normalizeMappedColumns(mappings) {
   const mapped = mappings && mappings.Columns;
 
@@ -128,6 +166,11 @@ function normalizeMappedColumns(mappings) {
     : [mapped].filter(Boolean);
 }
 
+/*
+  Normalize a single mapped column.
+
+  Some Grist mapping values may be arrays, even when only one column is expected.
+*/
 function normalizeSingleMappedColumn(value) {
   if (!value) {
     return null;
@@ -140,6 +183,12 @@ function normalizeSingleMappedColumn(value) {
   return typeof value === "string" ? value : null;
 }
 
+/*
+  Normalize mapped values for "Shown columns".
+
+  For multi-column mappings, mappedRecord.Columns should be an array.
+  This function keeps the rest of the widget safe if it is not.
+*/
 function normalizeShownValues(value) {
   if (Array.isArray(value)) {
     return value;
@@ -152,12 +201,25 @@ function normalizeShownValues(value) {
   return [value];
 }
 
+/*
+  Build the visible tree rows.
+
+  This function separates two concepts:
+    - reachable records: records that belong to the tree even if hidden by a folded branch;
+    - visible records: records currently shown because their ancestors are expanded.
+
+  This prevents folded children from being incorrectly reported as unreachable.
+*/
 function buildVisibleTree(records, expandedSet) {
   const byId = new Map();
   const children = new Map();
   const roots = [];
   const warnings = [];
 
+  /*
+    First pass:
+    create a lookup map from row ID to record.
+  */
   for (const record of records) {
     const id = toPositiveInt(record.id);
 
@@ -166,6 +228,12 @@ function buildVisibleTree(records, expandedSet) {
     }
   }
 
+  /*
+    Second pass:
+    group records by parent ID.
+
+    If a record has no valid parent, it becomes a root record.
+  */
   for (const record of records) {
     const id = toPositiveInt(record.id);
     const parentId = rowIdOf(record.__treeParent);
@@ -190,6 +258,11 @@ function buildVisibleTree(records, expandedSet) {
   const reachable = new Set();
   const reportedCycles = new Set();
 
+  /*
+    Mark all records reachable from roots, regardless of expanded/collapsed state.
+
+    This is used only for validation and warning generation.
+  */
   function markReachable(record, path) {
     const id = toPositiveInt(record.id);
 
@@ -197,6 +270,12 @@ function buildVisibleTree(records, expandedSet) {
       return;
     }
 
+    /*
+      Stop recursion if a cycle is found.
+
+      Example:
+        A -> B -> C -> A
+    */
     if (path.has(id)) {
       const signature = [...path, id].join(">");
 
@@ -222,6 +301,11 @@ function buildVisibleTree(records, expandedSet) {
     }
   }
 
+  /*
+    Build only the rows that should currently be visible.
+
+    Children are walked only when the parent row ID is in expandedSet.
+  */
   function walkVisible(record, level, path) {
     const id = toPositiveInt(record.id);
 
@@ -247,6 +331,9 @@ function buildVisibleTree(records, expandedSet) {
     }
   }
 
+  /*
+    Normal tree traversal from root records.
+  */
   for (const root of roots) {
     markReachable(root, new Set());
   }
@@ -255,6 +342,12 @@ function buildVisibleTree(records, expandedSet) {
     walkVisible(root, 0, new Set());
   }
 
+  /*
+    Defensive fallback:
+    if records are not reachable from any root, still show them as top-level rows.
+
+    This prevents bad data from making records disappear completely.
+  */
   for (const record of records) {
     const id = toPositiveInt(record.id);
 
@@ -269,6 +362,12 @@ function buildVisibleTree(records, expandedSet) {
   return { visible, children, warnings };
 }
 
+/*
+  Try to get the selected table ID.
+
+  This is used to read Grist metadata tables and find column labels,
+  descriptions, types, and formula flags.
+*/
 async function getSelectedTableId() {
   try {
     const table = grist.getTable ? grist.getTable() : grist.selectedTable;
@@ -287,6 +386,18 @@ async function getSelectedTableId() {
   return null;
 }
 
+/*
+  Fetch metadata for selected columns.
+
+  Metadata is read from Grist internal metadata tables:
+    - _grist_Tables
+    - _grist_Tables_column
+
+  The widget uses this metadata to:
+    - show column labels instead of raw column IDs;
+    - show column descriptions in the header info hint;
+    - detect formula columns and render them as read-only.
+*/
 async function fetchColumnMetadata(colIds) {
   const uniqueColIds = Array.from(new Set(colIds.filter(Boolean)));
 
@@ -294,6 +405,9 @@ async function fetchColumnMetadata(colIds) {
     return {};
   }
 
+  /*
+    Fallback metadata used if the real metadata cannot be fetched.
+  */
   const fallback = Object.fromEntries(
     uniqueColIds.map(colId => [
       colId,
@@ -319,6 +433,9 @@ async function fetchColumnMetadata(colIds) {
       grist.docApi.fetchTable("_grist_Tables_column")
     ]);
 
+    /*
+      Find the metadata row for the current source table.
+    */
     const tableIndex = tables.tableId.indexOf(tableId);
 
     if (tableIndex < 0) {
@@ -329,6 +446,10 @@ async function fetchColumnMetadata(colIds) {
     const fields = Object.keys(columns);
     const result = { ...fallback };
 
+    /*
+      Scan metadata columns for the current table and keep only those
+      requested by uniqueColIds.
+    */
     for (let i = 0; i < columns.id.length; i += 1) {
       if (columns.parentId[i] !== tableRef) {
         continue;
@@ -358,73 +479,139 @@ async function fetchColumnMetadata(colIds) {
   }
 }
 
+/*
+  Main Vue application.
+*/
 const app = Vue.createApp({
   data() {
     return {
+      /*
+        Current records received from Grist.
+      */
       records: [],
+
+      /*
+        Current Grist column mappings.
+      */
       mappings: null,
 
+      /*
+        Current selected row and selected column.
+      */
       selectedId: null,
       selectedCol: null,
 
+      /*
+        Expanded tree branches.
+        expandedVersion is used to force Vue recomputation because Set mutations
+        are not deeply reactive in a simple way.
+      */
       expanded: new Set(),
       expandedVersion: 0,
 
+      /*
+        Cell update and display state.
+      */
       savingCells: {},
       shownColumns: [],
       columnMeta: {},
       columnWidths: {},
 
+      /*
+        UI state for resizing and header description hints.
+      */
       resizing: null,
       openHint: null,
 
+      /*
+        Status/error message shown above the table.
+      */
       status: "Waiting for Grist data…",
       isError: false,
 
+      /*
+        Tree indentation in pixels per level.
+      */
       indentPx: 20,
+
+      /*
+        Timers and request guards.
+      */
       saveTimer: null,
-      widthSaveTimer: null,
       metadataRequestId: 0,
 
+      /*
+        References to resize event handlers, so they can be removed cleanly.
+      */
       resizeMoveHandler: null,
       resizeEndHandler: null
     };
   },
 
   computed: {
+    /*
+      Columns displayed in the table area after the Label column.
+    */
     dataColumns() {
       return this.shownColumns;
     },
 
+    /*
+      Real Grist column ID mapped to the Label field.
+    */
     labelColumnId() {
       return normalizeSingleMappedColumn(this.mappings && this.mappings.Label);
     },
 
+    /*
+      Real Grist column ID mapped to the Parent field.
+    */
     parentColumnId() {
       return normalizeSingleMappedColumn(this.mappings && this.mappings.Parent);
     },
 
+    /*
+      Real Grist column ID mapped to the optional Error field.
+    */
     errorColumnId() {
       return normalizeSingleMappedColumn(this.mappings && this.mappings.Error);
     },
 
+    /*
+      Tree model derived from records and expanded state.
+    */
     tree() {
       this.expandedVersion;
       return buildVisibleTree(this.records, this.expanded);
     },
 
+    /*
+      Flat list of rows currently visible in the tree.
+    */
     visibleRows() {
       return this.tree.visible;
     },
 
+    /*
+      Validation warnings generated while building the tree.
+    */
     warnings() {
       return this.tree.warnings;
     },
 
+    /*
+      Map of parent row ID -> child records.
+    */
     childrenMap() {
       return this.tree.children;
     },
 
+    /*
+      Pixel width of the whole custom table.
+
+      The table is not forced to fill the full widget width, so empty space
+      remains visible on the right when columns are narrow.
+    */
     totalTableWidth() {
       return this.columnWidth("__label") +
         this.dataColumns.reduce((sum, col) => sum + this.columnWidth(col), 0);
@@ -432,23 +619,40 @@ const app = Vue.createApp({
   },
 
   methods: {
+    /*
+      Store records received from Grist.
+
+      The "new" pseudo-row is ignored.
+    */
     setRecords(records, mappings) {
       this.records = records.filter(record => record && record.id !== "new");
       this.mappings = mappings || null;
       this.status = "";
       this.isError = false;
 
+      /*
+        If a row is selected, keep its ancestors expanded after data refresh.
+      */
       if (this.selectedId !== null) {
         this.expandAncestors(this.selectedId, false);
       }
     },
 
+    /*
+      Store the visible data columns chosen by the user.
+    */
     setShownColumns(columnIds) {
       this.shownColumns = Array.isArray(columnIds)
         ? columnIds.filter(Boolean)
         : [];
     },
 
+    /*
+      Refresh column metadata.
+
+      requestId prevents older asynchronous responses from overwriting newer
+      metadata after a rapid mapping change.
+    */
     async refreshColumnMetadata(colIds) {
       const requestId = ++this.metadataRequestId;
       const metadata = await fetchColumnMetadata(colIds);
@@ -460,6 +664,9 @@ const app = Vue.createApp({
       this.columnMeta = metadata;
     },
 
+    /*
+      Show a message when required column mappings are missing.
+    */
     setMappingError() {
       this.records = [];
       this.shownColumns = [];
@@ -467,15 +674,26 @@ const app = Vue.createApp({
       this.isError = true;
     },
 
+    /*
+      Whether the row should be highlighted as an error row.
+    */
     recordHasError(record) {
       return Boolean(record && record.__treeError);
     },
 
+    /*
+      Raw value used by the editable Label input.
+    */
     rawLabelValue(record) {
       const label = record && record.__treeLabel;
       return label === null || label === undefined ? "" : String(label);
     },
 
+    /*
+      Display value for the tree label.
+
+      If the label is empty, show a row placeholder.
+    */
     labelFor(record) {
       const label = record.__treeLabel;
 
@@ -486,6 +704,12 @@ const app = Vue.createApp({
       return String(label);
     },
 
+    /*
+      Return metadata for a header column.
+
+      "__label" is an internal widget column key, so it must be translated
+      back to the real mapped Label column ID.
+    */
     metaForHeader(col) {
       const sourceCol = col === "__label" ? this.labelColumnId : col;
 
@@ -496,6 +720,9 @@ const app = Vue.createApp({
       return this.columnMeta[sourceCol] || null;
     },
 
+    /*
+      Header text: prefer Grist column label, then column ID.
+    */
     headerTitle(col) {
       const sourceCol = col === "__label" ? this.labelColumnId : col;
       const meta = this.metaForHeader(col);
@@ -511,23 +738,42 @@ const app = Vue.createApp({
       return col === "__label" ? "Label" : col;
     },
 
+    /*
+      Header description shown by the info icon.
+    */
     headerDescription(col) {
       const meta = this.metaForHeader(col);
       return meta && meta.description ? String(meta.description) : "";
     },
 
+    /*
+      Toggle a pinned header hint.
+    */
     toggleHint(col) {
       this.openHint = this.openHint === col ? null : col;
     },
 
+    /*
+      Whether a header hint is currently pinned open.
+    */
     isHintOpen(col) {
       return this.openHint === col;
     },
 
+    /*
+      Detect whether a column is a formula column.
+
+      Formula columns are shown read-only and display an "=" badge.
+    */
     isFormulaColumn(col) {
       return Boolean(this.columnMeta[col] && this.columnMeta[col].isFormula);
     },
 
+    /*
+      Get current width for a column.
+
+      "__label" is the tree label column; all others are data columns.
+    */
     columnWidth(col) {
       const width = Number(this.columnWidths[col]);
 
@@ -538,6 +784,9 @@ const app = Vue.createApp({
       return col === "__label" ? DEFAULT_LABEL_WIDTH : DEFAULT_DATA_WIDTH;
     },
 
+    /*
+      Inline style object used by colgroup, th, and td.
+    */
     columnStyle(col) {
       const width = `${this.columnWidth(col)}px`;
 
@@ -548,6 +797,9 @@ const app = Vue.createApp({
       };
     },
 
+    /*
+      Start dragging a column resizer.
+    */
     startResize(col, event) {
       this.resizing = {
         col,
@@ -564,6 +816,9 @@ const app = Vue.createApp({
       window.addEventListener("mouseup", this.resizeEndHandler);
     },
 
+    /*
+      Update the column width while dragging.
+    */
     onResizeMove(event) {
       if (!this.resizing) {
         return;
@@ -581,6 +836,9 @@ const app = Vue.createApp({
       };
     },
 
+    /*
+      Finish resizing and save the final column widths.
+    */
     endResize() {
       if (!this.resizing) {
         return;
@@ -600,21 +858,35 @@ const app = Vue.createApp({
       this.resizeMoveHandler = null;
       this.resizeEndHandler = null;
 
-      this.saveColumnWidthsDebounced();
+      this.saveColumnWidths();
     },
 
-    async saveColumnWidthsDebounced() {
-      clearTimeout(this.widthSaveTimer);
+    /*
+      Save column widths to Grist widget options.
 
-      this.widthSaveTimer = setTimeout(async () => {
-        try {
-          await grist.setOption(OPTION_WIDTHS, this.columnWidths);
-        } catch (err) {
-          console.warn("Could not save column widths", err);
+      This is called once when the resize operation ends.
+    */
+    async saveColumnWidths() {
+      const clean = {};
+
+      for (const [col, width] of Object.entries(this.columnWidths)) {
+        const n = Number(width);
+
+        if (Number.isFinite(n) && n >= MIN_COLUMN_WIDTH) {
+          clean[col] = n;
         }
-      }, 250);
+      }
+
+      try {
+        await grist.setOption(OPTION_WIDTHS, clean);
+      } catch (err) {
+        console.warn("Could not save column widths", err);
+      }
     },
 
+    /*
+      Return a mapped visible cell value by column index.
+    */
     cellValue(record, colIndex) {
       if (!record || !Array.isArray(record.__shownValues)) {
         return null;
@@ -623,16 +895,25 @@ const app = Vue.createApp({
       return record.__shownValues[colIndex];
     },
 
+    /*
+      Whether a tree row has child rows.
+    */
     hasChildren(rowId) {
       const id = toPositiveInt(rowId);
       return id !== null && (this.childrenMap.get(id) || []).length > 0;
     },
 
+    /*
+      Whether a tree row is currently expanded.
+    */
     isExpanded(rowId) {
       const id = toPositiveInt(rowId);
       return id !== null && this.expanded.has(id);
     },
 
+    /*
+      Toggle expanded/collapsed state for one tree branch.
+    */
     toggle(rowId) {
       const id = toPositiveInt(rowId);
 
@@ -651,6 +932,11 @@ const app = Vue.createApp({
       this.setExpanded(next, true);
     },
 
+    /*
+      Replace the expanded set.
+
+      expandedVersion is incremented to force computed tree recomputation.
+    */
     setExpanded(next, shouldSave) {
       this.expanded = next;
       this.expandedVersion += 1;
@@ -660,6 +946,9 @@ const app = Vue.createApp({
       }
     },
 
+    /*
+      Expand all ancestors of a selected row so the row remains visible.
+    */
     expandAncestors(rowId, shouldSave) {
       const id = toPositiveInt(rowId);
 
@@ -704,6 +993,12 @@ const app = Vue.createApp({
       }
     },
 
+    /*
+      Debounced save for expanded tree branches.
+
+      Unlike column width saving, this may happen frequently when the user
+      opens/closes branches, so a small debounce is useful.
+    */
     async saveExpandedDebounced() {
       clearTimeout(this.saveTimer);
 
@@ -716,6 +1011,9 @@ const app = Vue.createApp({
       }, 250);
     },
 
+    /*
+      Select a Grist record and synchronize the Grist cursor.
+    */
     async selectRecord(record) {
       const id = toPositiveInt(record.id);
 
@@ -733,11 +1031,24 @@ const app = Vue.createApp({
       }
     },
 
+    /*
+      Select both a row and a column.
+
+      The selected column is used to highlight the corresponding header.
+    */
     async selectCell(record, col) {
       this.selectedCol = col;
       await this.selectRecord(record);
     },
 
+    /*
+      Find a non-empty sample value for a column.
+
+      This helps determine whether a column should be rendered as:
+        - text input;
+        - number input;
+        - checkbox.
+    */
     sampleValue(col) {
       const colIndex = this.shownColumns.indexOf(col);
 
@@ -755,6 +1066,9 @@ const app = Vue.createApp({
       return record ? record.__shownValues[colIndex] : null;
     },
 
+    /*
+      Determine input type for a value.
+    */
     inputKind(value, col) {
       const sample = value ?? this.sampleValue(col);
 
@@ -769,6 +1083,9 @@ const app = Vue.createApp({
       return "text";
     },
 
+    /*
+      Return CSS classes for a data cell.
+    */
     cellClass(record, col, colIndex) {
       const kind = this.inputKind(this.cellValue(record, colIndex), col);
 
@@ -780,10 +1097,16 @@ const app = Vue.createApp({
       };
     },
 
+    /*
+      Format a value for display.
+    */
     formatValue(value) {
       return stringifyCell(value);
     },
 
+    /*
+      Restore an input value when Escape is pressed.
+    */
     resetInput(event, originalValue) {
       event.target.value =
         originalValue === null || originalValue === undefined
@@ -793,6 +1116,9 @@ const app = Vue.createApp({
       event.target.blur();
     },
 
+    /*
+      Convert raw input strings back to the appropriate Grist value type.
+    */
     coerceValue(rawValue, oldValue, col) {
       const sample = oldValue ?? this.sampleValue(col);
 
@@ -817,14 +1143,23 @@ const app = Vue.createApp({
       return rawValue === "" ? null : rawValue;
     },
 
+    /*
+      Key used to track saving state per record/column pair.
+    */
     cellKey(record, col) {
       return `${record.id}::${col}`;
     },
 
+    /*
+      Whether a cell is currently being saved.
+    */
     isSaving(record, col) {
       return Boolean(this.savingCells[this.cellKey(record, col)]);
     },
 
+    /*
+      Set saving state for a cell.
+    */
     setSaving(record, col, value) {
       const key = this.cellKey(record, col);
 
@@ -834,6 +1169,9 @@ const app = Vue.createApp({
       };
     },
 
+    /*
+      Save an edited tree Label value back to Grist.
+    */
     async commitLabel(record, rawValue) {
       const id = toPositiveInt(record && record.id);
       const labelCol = this.labelColumnId;
@@ -878,6 +1216,9 @@ const app = Vue.createApp({
       }
     },
 
+    /*
+      Save an edited data cell back to Grist.
+    */
     async commitCell(record, col, colIndex, rawValue) {
       const id = toPositiveInt(record.id);
 
@@ -889,6 +1230,9 @@ const app = Vue.createApp({
         return;
       }
 
+      /*
+        Formula columns cannot be updated.
+      */
       if (this.isFormulaColumn(col)) {
         return;
       }
@@ -936,8 +1280,18 @@ const app = Vue.createApp({
   }
 });
 
+/*
+  Mount the Vue app.
+*/
 const vm = app.mount("#app");
 
+/*
+  Load saved widget options.
+
+  This restores:
+    - expanded/collapsed tree branches;
+    - custom widget column widths.
+*/
 grist.onOptions(options => {
   const expandedIds = options && Array.isArray(options[OPTION_EXPANDED])
     ? options[OPTION_EXPANDED]
@@ -970,7 +1324,18 @@ grist.onOptions(options => {
   }
 });
 
+/*
+  Receive table records from Grist.
+
+  expandRefs:false is important:
+  it makes reference columns arrive as row IDs, which is exactly what the
+  tree builder needs for Parent values.
+*/
 grist.onRecords((records, mappings) => {
+  /*
+    Convert user-mapped Grist columns into normalized widget names:
+      Parent, Label, Columns, Error.
+  */
   const mapped = grist.mapColumnNames(records, {
     columns: GRIST_COLUMNS,
     mappings
@@ -986,14 +1351,18 @@ grist.onRecords((records, mappings) => {
   const parentColumnId = normalizeSingleMappedColumn(mappings && mappings.Parent);
   const errorColumnId = normalizeSingleMappedColumn(mappings && mappings.Error);
 
+  /*
+    Merge original records with internal widget aliases.
+
+    Internal aliases begin with "__" to avoid collisions with real Grist
+    column IDs.
+  */
   const mergedRecords = records.map((record, index) => {
     const mappedRecord = mapped[index] || {};
 
     return {
       ...record,
 
-      // Internal aliases used by the widget.
-      // They avoid collisions with real Grist column IDs.
       __treeParent: mappedRecord.Parent,
       __treeLabel: mappedRecord.Label,
       __shownValues: normalizeShownValues(mappedRecord.Columns),
@@ -1004,6 +1373,9 @@ grist.onRecords((records, mappings) => {
   vm.setShownColumns(shownColumnIds);
   vm.setRecords(mergedRecords, mappings);
 
+  /*
+    Refresh metadata for every column used by the widget.
+  */
   vm.refreshColumnMetadata([
     parentColumnId,
     labelColumnId,
@@ -1014,6 +1386,11 @@ grist.onRecords((records, mappings) => {
   expandRefs: false
 });
 
+/*
+  Receive current selected record from Grist.
+
+  This keeps the widget selection synchronized with other linked widgets.
+*/
 grist.onRecord(record => {
   if (!record) {
     vm.selectedId = null;
@@ -1023,11 +1400,20 @@ grist.onRecord(record => {
   const id = toPositiveInt(record.id);
   vm.selectedId = id;
 
+  /*
+    If the selected record is inside a collapsed branch, expand its ancestors.
+  */
   if (id !== null) {
     vm.expandAncestors(id, true);
   }
 });
 
+/*
+  Tell Grist the widget is ready.
+
+  requiredAccess:"full" is needed because this widget can update records.
+  allowSelectBy:true enables cursor/selection linking.
+*/
 grist.ready({
   requiredAccess: "full",
   allowSelectBy: true,
