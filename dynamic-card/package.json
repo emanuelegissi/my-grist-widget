@@ -1,16 +1,16 @@
 {
-  "name": "@emanuelegissi/js-buttons",
-  "description": "Javascript buttons.",
+  "name": "@emanuelegissi/dynamic-card",
+  "description": "Dynamic card.",
   "homePage": "https://github.com/emanuelegissi/my-grist-widget",
-  "version": "0.0.5",
+  "version": "0.0.1",
   "grist": {
-    "name": "JS buttons",
-    "url": "https://emanuelegissi.github.io/my-grist-widget/js-buttons/index.html",
-    "widgetId": "@emanuelegissi/js-buttons",
+    "name": "Dynamic card",
+    "url": "https://emanuelegissi.github.io/my-grist-widget/dynamic-card/index.html",
+    "widgetId": "@emanuelegissi/dynamic-card",
     "published": true,
     "accessLevel": "full",
     "renderAfterReady": true,
-    "description": "Javascript buttons.",
+    "description": "Displays a dynamic card with editable fields.",
     "authors": [
       {
         "name": "Emanuele Gissi",

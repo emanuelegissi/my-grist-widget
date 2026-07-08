@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Dynamic Card</title>
+
+  <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+  <script defer src="script.js"></script>
+
+  <style>
+    :root {
+      --card-bg: var(--grist-theme-widget-bg, #ffffff);
+      --text: var(--grist-theme-text, #262633);
+      --label: var(--grist-theme-card-form-label, var(--grist-theme-secondary, #929299));
+      --muted: var(--grist-theme-secondary, #929299);
+
+      --input-bg: var(--grist-theme-input-bg, #ffffff);
+      --input-fg: var(--grist-theme-input-fg, #000000);
+      --input-border: var(--grist-theme-input-border, #d9d9d9);
+
+      --input-focus: var(
+        --grist-color-cursor,
+        var(
+          --grist-theme-token-cursor,
+          var(--grist-theme-primary, #16b378)
+        )
+      );
+
+      --input-invalid: var(--grist-theme-input-invalid, #d0021b);
+      --placeholder: var(--grist-theme-input-placeholder-fg, #929299);
+
+      --menu-bg: var(--grist-theme-menu-bg, #ffffff);
+      --menu-fg: var(--grist-theme-menu-item-fg, #000000);
+      --menu-border: var(--grist-theme-menu-border, #d9d9d9);
+      --menu-selected-bg: var(--grist-theme-autocomplete-item-selected-bg, #e8e8e8);
+
+      --info-bg: var(--grist-theme-info-button-fg, #8f8f8f);
+      --info-hover-bg: var(--grist-theme-info-button-hover-fg, #707070);
+    }
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--card-bg);
+      color: var(--text);
+      font-family: var(
+        --grist-theme-font-family,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        Liberation Sans,
+        Helvetica,
+        Arial,
+        sans-serif
+      );
+      font-size: var(--grist-theme-medium-font-size, 13px);
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    #app {
+      width: 100%;
+      height: 100%;
+      overflow-y: auto;
+      overflow-x: hidden;
+      background: var(--card-bg);
+    }
+
+    .card,
+    .empty,
+    .error-box {
+      width: 100%;
+      min-height: 100vh;
+      overflow-x: hidden;
+      padding: 14px 20px 24px;
+      background: var(--card-bg);
+    }
+
+    .field {
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+
+    .title-row {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      min-height: 16px;
+      margin-bottom: 10px;
+      overflow: visible;
+      color: var(--label);
+      font-size: var(--grist-theme-small-font-size, 11px);
+      font-weight: 600;
+      line-height: 16px;
+    }
+
+    .title-row.hidden {
+      display: none;
+    }
+
+    .label-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      min-height: 16px;
+      margin-bottom: 0;
+      overflow: visible;
+      color: var(--label);
+      font-size: var(--grist-theme-small-font-size, 11px);
+      font-weight: 600;
+      line-height: 16px;
+    }
+
+    .label-text {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .info-icon {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 13px;
+      height: 13px;
+      border-radius: 50%;
+      background: var(--info-bg);
+      color: var(--card-bg);
+      font-size: 9px;
+      font-weight: 700;
+      line-height: 13px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .info-icon:hover {
+      background: var(--info-hover-bg);
+    }
+
+    .control-row {
+      position: relative;
+      width: 100%;
+      overflow: hidden;
+    }
+
+    input:not([type="checkbox"]),
+    textarea,
+    select {
+      display: block;
+      width: 100%;
+      min-width: 0;
+      max-width: 100%;
+      border: 1px solid var(--input-border);
+      border-radius: 0;
+      background: var(--input-bg);
+      color: var(--input-fg);
+      box-shadow: none;
+    }
+
+    input:not([type="checkbox"]),
+    select {
+      height: 23px;
+      padding: 1px 5px;
+      line-height: 18px;
+    }
+
+    textarea {
+      min-height: 58px;
+      padding: 3px 5px;
+      line-height: 18px;
+      resize: vertical;
+    }
+
+    .control-row.has-unit input,
+    .control-row.has-unit textarea,
+    .control-row.has-unit select {
+      padding-right: 44px;
+    }
+
+    input::placeholder,
+    textarea::placeholder {
+      color: var(--placeholder);
+    }
+
+    input:not([type="checkbox"]):focus,
+    textarea:focus,
+    select:focus {
+      outline: none;
+      border: 2px solid var(--input-focus);
+      box-shadow: none;
+    }
+
+    input:invalid,
+    textarea:invalid,
+    select:invalid {
+      border-color: var(--input-invalid);
+    }
+
+    input[type="number"] {
+      appearance: textfield;
+      -moz-appearance: textfield;
+    }
+
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button {
+      margin: 0;
+      appearance: none;
+      -webkit-appearance: none;
+    }
+
+    .unit {
+      position: absolute;
+      right: 6px;
+      top: 0;
+      bottom: 0;
+      display: flex;
+      align-items: center;
+      max-width: 36px;
+      overflow: hidden;
+      color: var(--label);
+      font-size: var(--grist-theme-small-font-size, 11px);
+      line-height: 23px;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      pointer-events: none;
+    }
+
+    .toggle {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 23px;
+      overflow: hidden;
+      border: 1px solid var(--input-border);
+      background: var(--input-bg);
+      cursor: pointer;
+    }
+
+    .toggle:focus-within {
+      border: 2px solid var(--input-focus);
+    }
+
+    .toggle input[type="checkbox"] {
+      position: absolute;
+      left: 4px;
+      top: 1px;
+      width: 1px;
+      height: 1px;
+      margin: 0;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .toggle input[type="checkbox"]:focus {
+      outline: none;
+    }
+
+    .toggle-switch {
+      position: relative;
+      flex: 0 0 auto;
+      width: 30px;
+      height: 17px;
+      border-radius: 13px;
+    }
+
+    .toggle-switch-track {
+      position: absolute;
+      inset: 0;
+      border-radius: 13px;
+      background: var(--grist-theme-switch-inactive-slider, var(--grist-theme-bg-secondary, #f7f7f7));
+    }
+
+    .toggle-switch-track::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: 13px;
+      box-shadow: inset 0 0 0 1px var(--grist-theme-switch-inactive-pill, var(--grist-theme-secondary, #929299));
+    }
+
+    .toggle-switch-pill {
+      position: absolute;
+      z-index: 1;
+      left: 3.5px;
+      top: 0;
+      bottom: 0;
+      width: 11px;
+      height: 11px;
+      margin-top: auto;
+      margin-bottom: auto;
+      border-radius: 50%;
+      background: var(--grist-theme-switch-inactive-pill, var(--grist-theme-secondary, #929299));
+    }
+
+    .toggle:hover .toggle-switch {
+      box-shadow: 0 0 2px var(--grist-theme-switch-hover-shadow, var(--grist-theme-switch-active-slider, #009058));
+    }
+
+    .toggle input[type="checkbox"]:focus-visible + .toggle-switch > .toggle-switch-track {
+      outline: 2px solid var(--grist-theme-kb-focus-highlight, var(--input-focus));
+      outline-offset: 1px;
+    }
+
+    .toggle input[type="checkbox"]:checked + .toggle-switch > .toggle-switch-track {
+      background: var(--grist-theme-switch-active-slider, var(--grist-theme-primary-muted, #009058));
+    }
+
+    .toggle input[type="checkbox"]:checked + .toggle-switch > .toggle-switch-pill {
+      width: 13px;
+      height: 13px;
+      transform: translateX(12px);
+      background: var(--grist-theme-switch-active-pill, var(--grist-theme-bg-default, #ffffff));
+      box-shadow: none;
+    }
+
+    .toggle input[type="checkbox"]:checked + .toggle-switch > .toggle-switch-pill::after {
+      content: "✓";
+      position: absolute;
+      inset: 0;
+      color: var(--grist-theme-switch-active-slider, var(--grist-theme-primary-muted, #009058));
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 13px;
+      text-align: center;
+    }
+
+    .autocomplete-menu {
+      position: fixed;
+      display: none;
+      max-width: calc(100vw - 8px);
+      max-height: 220px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      border: 1px solid var(--menu-border);
+      background: var(--menu-bg);
+      color: var(--menu-fg);
+      z-index: var(--grist-floating-popup-menu-z-index, 1004);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+    }
+
+    .autocomplete-menu.visible {
+      display: block;
+    }
+
+    .autocomplete-item {
+      padding: 4px 7px;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      cursor: pointer;
+    }
+
+    .autocomplete-item:hover,
+    .autocomplete-item.active {
+      background: var(--menu-selected-bg);
+    }
+
+    .status {
+      min-height: 16px;
+      margin-top: 8px;
+      overflow: hidden;
+      color: var(--muted);
+      font-size: var(--grist-theme-small-font-size, 11px);
+      line-height: 16px;
+    }
+
+    .status.error {
+      color: var(--input-invalid);
+    }
+
+    .error-box {
+      color: var(--label);
+      font-size: var(--grist-theme-small-font-size, 11px);
+    }
+
+    .error-box p {
+      margin: 8px 0;
+    }
+
+    details {
+      margin-top: 10px;
+      overflow-x: hidden;
+    }
+
+    pre {
+      max-width: 100%;
+      overflow: auto;
+      padding: 8px;
+      border: 1px solid var(--input-border);
+      background: var(--input-bg);
+      color: var(--input-fg);
+      font-size: var(--grist-theme-small-font-size, 11px);
+    }
+
+    @media (max-width: 220px) {
+      .card,
+      .empty,
+      .error-box {
+        padding-left: 8px;
+        padding-right: 8px;
+      }
+
+      .control-row.has-unit input,
+      .control-row.has-unit textarea,
+      .control-row.has-unit select {
+        padding-right: 30px;
+      }
+
+      .unit {
+        right: 4px;
+        max-width: 24px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main id="app">
+    <div class="empty">Waiting for a selected record…</div>
+  </main>
+</body>
+</html>
