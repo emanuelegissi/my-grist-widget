@@ -159,11 +159,13 @@ const widget = Object.freeze({
     const selectedTableId = await widget.getSelectedTableId();
 
     // Snapshot before running the actions.
-    // This allows us to discover automatically assigned ids from AddRecord actions.
+    // This allows us to discover automatically assigned ids from AddRecord actions
+    // and to choose a nearby cursor position after RemoveRecord actions.
     const before = await grist.fetchSelectedTable();
-    const beforeIds = new Set(before.id || []);
+    const beforeIds = before.id || [];
+    const beforeIdSet = new Set(beforeIds);
 
-    let lastTargetRowId = null;
+    let cursorTarget = null;
 
     for (const action of userActions) {
       if (!Array.isArray(action) || action.length < 2) {
@@ -180,34 +182,44 @@ const widget = Object.freeze({
 
       if (actionName === "AddRecord") {
         const rowId = action[2];
-
-        if (rowId != null) {
-          lastTargetRowId = rowId;
-        }
+        cursorTarget = rowId == null
+          ? {type: "autoAdd"}
+          : {type: "row", rowId};
       }
 
       if (actionName === "BulkAddRecord") {
-        const rowIds = action[2] || [];
-        const knownRowIds = rowIds.filter((rowId) => rowId != null);
-
-        if (knownRowIds.length > 0) {
-          lastTargetRowId = knownRowIds[knownRowIds.length - 1];
-        }
+        const rowIds = Array.isArray(action[2]) ? action[2] : [];
+        const lastRowId = rowIds.length > 0 ? rowIds[rowIds.length - 1] : null;
+        cursorTarget = lastRowId == null
+          ? {type: "autoAdd"}
+          : {type: "row", rowId: lastRowId};
       }
 
       if (actionName === "UpdateRecord") {
         const rowId = action[2];
-
         if (rowId != null) {
-          lastTargetRowId = rowId;
+          cursorTarget = {type: "row", rowId};
         }
       }
 
       if (actionName === "BulkUpdateRecord") {
-        const rowIds = action[2] || [];
-
+        const rowIds = Array.isArray(action[2]) ? action[2] : [];
         if (rowIds.length > 0) {
-          lastTargetRowId = rowIds[rowIds.length - 1];
+          cursorTarget = {type: "row", rowId: rowIds[rowIds.length - 1]};
+        }
+      }
+
+      if (actionName === "RemoveRecord") {
+        const rowId = action[2];
+        if (rowId != null) {
+          cursorTarget = {type: "removed", rowId};
+        }
+      }
+
+      if (actionName === "BulkRemoveRecord") {
+        const rowIds = Array.isArray(action[2]) ? action[2] : [];
+        if (rowIds.length > 0) {
+          cursorTarget = {type: "removed", rowId: rowIds[rowIds.length - 1]};
         }
       }
     }
@@ -219,17 +231,29 @@ const widget = Object.freeze({
     await grist.docApi.applyUserActions(userActions);
 
     // Snapshot after running the actions.
-    // If new records were created with automatic ids, find them now.
     const after = await grist.fetchSelectedTable();
-    const createdIds = (after.id || []).filter((id) => !beforeIds.has(id));
+    const afterIds = after.id || [];
+    const afterIdSet = new Set(afterIds);
+    const createdIds = afterIds.filter((id) => !beforeIdSet.has(id));
 
-    if (createdIds.length > 0) {
-      lastTargetRowId = createdIds[createdIds.length - 1];
+    let nextCursorRowId = null;
+
+    if (cursorTarget?.type === "autoAdd") {
+      nextCursorRowId = createdIds[createdIds.length - 1] ?? null;
+    } else if (cursorTarget?.type === "row" && afterIdSet.has(cursorTarget.rowId)) {
+      nextCursorRowId = cursorTarget.rowId;
+    } else if (cursorTarget?.type === "removed") {
+      nextCursorRowId = findClosestRowIdAfterRemoval(beforeIds, afterIdSet, cursorTarget.rowId);
     }
 
-    if (lastTargetRowId != null) {
+    // Fallback for AddRecord/BulkAddRecord with automatic ids in older examples.
+    if (nextCursorRowId == null && createdIds.length > 0) {
+      nextCursorRowId = createdIds[createdIds.length - 1];
+    }
+
+    if (nextCursorRowId != null) {
       await grist.setCursorPos({
-        rowId: lastTargetRowId
+        rowId: nextCursorRowId
       });
     }
   },
@@ -255,6 +279,32 @@ const widget = Object.freeze({
     window.open(url, "_blank", "noopener,noreferrer");
   }
 });
+
+function findClosestRowIdAfterRemoval(beforeIds, afterIdSet, removedRowId) {
+  const removedIndex = beforeIds.indexOf(removedRowId);
+
+  if (removedIndex === -1) {
+    return null;
+  }
+
+  // Prefer the next record that occupied a position after the removed one.
+  for (let index = removedIndex + 1; index < beforeIds.length; index += 1) {
+    const rowId = beforeIds[index];
+    if (afterIdSet.has(rowId)) {
+      return rowId;
+    }
+  }
+
+  // If the removed record was near the end, fall back to the previous one.
+  for (let index = removedIndex - 1; index >= 0; index -= 1) {
+    const rowId = beforeIds[index];
+    if (afterIdSet.has(rowId)) {
+      return rowId;
+    }
+  }
+
+  return null;
+}
 
 function getEditorValue() {
   if (monacoEditor) {
