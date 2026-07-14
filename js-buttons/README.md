@@ -1,6 +1,6 @@
 # Grist JS Buttons
 
-A simple vanilla-JavaScript Grist custom widget that renders configurable buttons.
+A simple vanilla-JavaScript Grist custom widget that renders configurable JavaScript buttons.
 
 ## Features
 
@@ -8,11 +8,20 @@ A simple vanilla-JavaScript Grist custom widget that renders configurable button
 - compact Grist-style button row;
 - very small configuration button on the right side of the widget panel;
 - Monaco editor for the JavaScript configuration panel;
-- configuration saved in Grist widget options;
+- configuration saved either locally in widget options or shared through a Grist table;
+- optional creation of the shared configuration table when it does not exist;
 - dynamic JavaScript configuration through `function get_buttons()`;
 - synchronous and asynchronous `onclick` handlers;
 - button labels, tooltips, text colors, background colors, hidden state, and disabled state;
 - all buttons disabled while an action is running.
+
+## Files
+
+- `index.html`
+- `styles.css`
+- `script.js`
+
+Host these files as a static site, then use the `index.html` URL as the Grist custom widget URL.
 
 The widget loads Monaco Editor from jsDelivr:
 
@@ -22,13 +31,38 @@ The widget loads Monaco Editor from jsDelivr:
 
 If Monaco cannot be loaded, the widget falls back to a plain text editor.
 
-## Install
+## Configuration sources
 
-Use the following URL as the Grist custom widget URL:
+The configuration panel supports two modes.
 
-```html
-https://emanuelegissi.github.io/my-grist-widget/js-buttons
+### Local widget options
+
+The JavaScript code is saved in this widget instance's Grist widget options. This is best for one-off buttons.
+
+### Shared Grist table
+
+The JavaScript code is saved in a normal Grist table so multiple widget instances can reuse the same button configuration.
+
+Default shared table:
+
+```text
+JS_Button_Configs
 ```
+
+Required columns:
+
+| Column | Type | Purpose |
+| --- | --- | --- |
+| `Name` | Text | Configuration name, for example `default`, `admin`, or `records`. |
+| `Code` | Text | JavaScript code defining `function get_buttons()`. |
+
+If the configured shared table does not exist, the configuration panel shows a **Create table** button. It creates the table with the required columns and inserts the current editor code as the first named configuration.
+
+When using shared mode:
+
+- **Load** reads the selected `Name` from the shared table into the existing JavaScript editor;
+- **Save** writes the editor code back to the shared table;
+- if the named configuration does not exist but the table exists, **Save** creates a new row for it.
 
 ## Configuration API
 
@@ -83,7 +117,7 @@ widget.removeCurrentRecord();
 widget.openUrl(url);
 ```
 
-`widget.applyUserActions(userActions)` is the single user-action helper. It applies the actions, detects newly created row ids when possible, and moves the Grist cursor to the last affected row.
+`widget.applyUserActions(userActions)` applies Grist user actions, detects newly created row ids when possible, moves the Grist cursor to the last affected Add/Update row, and after `RemoveRecord`/`BulkRemoveRecord` moves the cursor to a nearby surviving row.
 
 Specific example actions still belong in the editable configuration code. The default `DEFAULT_CONFIG_CODE` defines example functions such as:
 

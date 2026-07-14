@@ -2,7 +2,7 @@
   "name": "@emanuelegissi/js-buttons",
   "description": "Javascript buttons.",
   "homePage": "https://github.com/emanuelegissi/my-grist-widget",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "grist": {
     "name": "JS buttons",
     "url": "https://emanuelegissi.github.io/my-grist-widget/js-buttons/index.html",

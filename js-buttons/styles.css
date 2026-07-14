@@ -221,6 +221,68 @@ body {
   color: var(--grist-text);
 }
 
+
+.config-source-panel {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 0 10px 8px;
+  border-bottom: 1px solid var(--grist-border);
+}
+
+.source-field {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--grist-muted-text);
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.compact-field {
+  min-width: 150px;
+}
+
+.source-select,
+.source-input {
+  min-height: 24px;
+  padding: 2px 6px;
+  border: 1px solid var(--grist-border);
+  border-radius: 3px;
+  color: var(--grist-text);
+  background: var(--grist-input-background);
+  font: inherit;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.source-select:focus,
+.source-input:focus {
+  border-color: var(--grist-primary);
+  outline: none;
+}
+
+.shared-config-controls {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.shared-config-controls[hidden] {
+  display: none;
+}
+
+.small-button {
+  min-height: 24px;
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
 .monaco-editor-panel {
   flex: 1 1 auto;
   min-height: 0;

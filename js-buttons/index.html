@@ -36,6 +36,29 @@
         Define <code>function get_buttons()</code>. It may return an array, <code>null</code>, or a Promise resolving to either.
       </p>
 
+      <section class="config-source-panel" aria-label="Configuration source">
+        <label class="source-field">
+          <span>Source</span>
+          <select id="configSourceSelect" class="source-select">
+            <option value="local">Local widget options</option>
+            <option value="table">Shared Grist table</option>
+          </select>
+        </label>
+
+        <div id="sharedConfigControls" class="shared-config-controls" hidden>
+          <label class="source-field compact-field">
+            <span>Table</span>
+            <input id="sharedConfigTableId" class="source-input" type="text" spellcheck="false" autocomplete="off">
+          </label>
+          <label class="source-field compact-field">
+            <span>Name</span>
+            <input id="sharedConfigName" class="source-input" type="text" spellcheck="false" autocomplete="off">
+          </label>
+          <button id="loadSharedConfigButton" class="secondary-button small-button" type="button">Load</button>
+          <button id="createSharedTableButton" class="secondary-button small-button" type="button" hidden>Create table</button>
+        </div>
+      </section>
+
       <div id="configEditor" class="monaco-editor-panel"></div>
       <textarea id="configCodeFallback" class="code-editor-fallback" spellcheck="false" autocomplete="off" hidden></textarea>
 
