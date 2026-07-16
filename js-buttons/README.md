@@ -2,6 +2,11 @@
 
 A simple vanilla-JavaScript Grist custom widget that renders configurable JavaScript buttons.
 
+See an application example [here](). FIXME
+
+Use it by inserting the following link as widget custom URL:
+`https://emanuelegissi.github.io/my-grist-widget/js-buttons`
+
 ## Features
 
 - no column mapping;
@@ -14,22 +19,6 @@ A simple vanilla-JavaScript Grist custom widget that renders configurable JavaSc
 - synchronous and asynchronous `onclick` handlers;
 - button labels, tooltips, text colors, background colors, hidden state, and disabled state;
 - all buttons disabled while an action is running.
-
-## Files
-
-- `index.html`
-- `styles.css`
-- `script.js`
-
-Host these files as a static site, then use the `index.html` URL as the Grist custom widget URL.
-
-The widget loads Monaco Editor from jsDelivr:
-
-```html
-<script defer src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
-```
-
-If Monaco cannot be loaded, the widget falls back to a plain text editor.
 
 ## Configuration sources
 
@@ -46,7 +35,7 @@ The JavaScript code is saved in a normal Grist table so multiple widget instance
 Default shared table:
 
 ```text
-JS_Button_Configs
+JS_Buttons
 ```
 
 Required columns:
@@ -118,6 +107,130 @@ widget.openUrl(url);
 ```
 
 `widget.applyUserActions(userActions)` applies Grist user actions, detects newly created row ids when possible, moves the Grist cursor to the last affected Add/Update row, and after `RemoveRecord`/`BulkRemoveRecord` moves the cursor to a nearby surviving row.
+
+### Return value of `widget.applyUserActions()`
+
+`widget.applyUserActions(userActions)` returns a Promise. The Promise resolves after the actions have been applied and the widget has finished moving the cursor. Its value is the result object returned by Grist's `grist.docApi.applyUserActions()`; the widget does not modify that object.
+
+A typical result has this shape:
+
+```javascript
+{
+  actionNum: 123,
+  retValues: [42],
+  isModification: true
+}
+```
+
+- `actionNum` is the document action number assigned by Grist.
+- `retValues` contains one return value for each requested user action, in the same order as `userActions`.
+- `isModification` indicates whether Grist treated the action bundle as a document modification.
+- Some Grist versions may include additional properties, such as `actionHash`. Grist types this API result as `any`, so configuration code should only depend on properties it needs and should tolerate additional or unavailable properties.
+
+For example, `AddRecord` returns its new row id, while `BulkAddRecord` returns an array of new row ids:
+
+```javascript
+async function add_one_record() {
+  const tableId = await widget.getSelectedTableId();
+  const result = await widget.applyUserActions([
+    ["AddRecord", tableId, null, {Name: "New record"}]
+  ]);
+
+  const newRowId = result.retValues[0];
+  console.log("Created row:", newRowId);
+}
+
+async function add_two_records() {
+  const tableId = await widget.getSelectedTableId();
+  const result = await widget.applyUserActions([
+    ["BulkAddRecord", tableId, [null, null], {
+      Name: ["First record", "Second record"]
+    }]
+  ]);
+
+  const newRowIds = result.retValues[0];
+  console.log("Created rows:", newRowIds);
+}
+```
+
+If Grist cannot apply an action, the Promise rejects and no result is returned. A synchronous error thrown by `onclick` is handled in the same way as a rejected Promise.
+
+### Custom error handling
+
+By default, no `try`/`catch` is required in a button handler. Letting an error escape from `onclick` makes the widget display its message in the status area. The widget also restores the enabled state of the buttons:
+
+```javascript
+async function approve_current_record() {
+  const tableId = await widget.getSelectedTableId();
+  const rowId = widget.requireCurrentRowId();
+
+  // If this rejects, the widget displays the error automatically.
+  await widget.applyUserActions([
+    ["UpdateRecord", tableId, rowId, {Status: "Approved"}]
+  ]);
+}
+```
+
+Catch the error inside the handler when it needs to be handled completely by configuration code. Normalize the caught value because JavaScript permits throwing values that are not `Error` objects:
+
+```javascript
+function error_message(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function approve_with_alert() {
+  try {
+    const tableId = await widget.getSelectedTableId();
+    const rowId = widget.requireCurrentRowId();
+
+    await widget.applyUserActions([
+      ["UpdateRecord", tableId, rowId, {Status: "Approved"}]
+    ]);
+  } catch (error) {
+    alert("The record could not be approved: " + error_message(error));
+    // Do not rethrow: this error has been fully handled here.
+  }
+}
+```
+
+When configuration code needs to log or inspect the original error but still wants the widget to show an error, catch it and throw a new error with useful context. The widget displays the new message:
+
+```javascript
+async function approve_with_context() {
+  try {
+    const tableId = await widget.getSelectedTableId();
+    const rowId = widget.requireCurrentRowId();
+
+    await widget.applyUserActions([
+      ["UpdateRecord", tableId, rowId, {Status: "Approved"}]
+    ]);
+  } catch (error) {
+    console.error("Approval failed", error);
+    throw new Error(
+      "Could not approve the selected record: " + error_message(error),
+      {cause: error}
+    );
+  }
+}
+```
+
+Use `finally` for cleanup that must run on both success and failure:
+
+```javascript
+async function run_with_cleanup(userActions) {
+  const startedAt = Date.now();
+
+  try {
+    await widget.applyUserActions(userActions);
+  } finally {
+    console.log("Action finished after", Date.now() - startedAt, "ms");
+  }
+}
+```
+
+If a caught error is not rethrown, the widget considers the handler successful and renders the buttons again. If it is rethrown, the widget displays the error and preserves the current button rendering. In either case, the widget keeps all buttons disabled until the asynchronous handler and its error handling have finished.
+
+### Example functions
 
 Specific example actions still belong in the editable configuration code. The default `DEFAULT_CONFIG_CODE` defines example functions such as:
 
