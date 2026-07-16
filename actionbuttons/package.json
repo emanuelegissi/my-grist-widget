@@ -5,7 +5,7 @@
   "version": "0.0.1",
   "grist": {
     "name": "Action buttons",
-    "url": "https://emanuelegissi.github.io/my-grist-widget/flowbuttons/index.html",
+    "url": "https://emanuelegissi.github.io/my-grist-widget/actionbuttons/index.html",
     "widgetId": "@emanuelegissi/widget-actionbuttons",
     "published": true,
     "accessLevel": "full",
