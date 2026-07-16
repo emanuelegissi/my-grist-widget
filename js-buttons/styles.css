@@ -178,8 +178,7 @@ body {
 }
 
 .config-actions {
-  border-top: 1px solid var(--grist-border);
-  border-bottom: 0;
+  border-top: 0;
 }
 
 .config-header h1 {
