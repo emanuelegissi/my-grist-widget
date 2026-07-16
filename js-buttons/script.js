@@ -8,12 +8,13 @@ const OPTION_SHARED_CONFIG_NAME = "sharedConfigName";
 const CONFIG_SOURCE_LOCAL = "local";
 const CONFIG_SOURCE_TABLE = "table";
 
-const DEFAULT_SHARED_TABLE_ID = "JS_Button_Configs";
+const DEFAULT_SHARED_TABLE_ID = "JS_Buttons";
 const DEFAULT_SHARED_CONFIG_NAME = "default";
 const SHARED_NAME_COLUMN = "Name";
 const SHARED_CODE_COLUMN = "Code";
 
-const DEFAULT_CONFIG_CODE = `async function add_records_with_user_actions() {
+const DEFAULT_CONFIG_CODE = `
+async function add_records_with_user_actions() {
   const tableId = await widget.getSelectedTableId();
   const countText = prompt("How many empty records should be added?", "2");
 
@@ -202,43 +203,43 @@ const widget = Object.freeze({
       if (actionName === "AddRecord") {
         const rowId = action[2];
         cursorTarget = rowId == null
-          ? {type: "autoAdd"}
-          : {type: "row", rowId};
+          ? { type: "autoAdd" }
+          : { type: "row", rowId };
       }
 
       if (actionName === "BulkAddRecord") {
         const rowIds = Array.isArray(action[2]) ? action[2] : [];
         const lastRowId = rowIds.length > 0 ? rowIds[rowIds.length - 1] : null;
         cursorTarget = lastRowId == null
-          ? {type: "autoAdd"}
-          : {type: "row", rowId: lastRowId};
+          ? { type: "autoAdd" }
+          : { type: "row", rowId: lastRowId };
       }
 
       if (actionName === "UpdateRecord") {
         const rowId = action[2];
         if (rowId != null) {
-          cursorTarget = {type: "row", rowId};
+          cursorTarget = { type: "row", rowId };
         }
       }
 
       if (actionName === "BulkUpdateRecord") {
         const rowIds = Array.isArray(action[2]) ? action[2] : [];
         if (rowIds.length > 0) {
-          cursorTarget = {type: "row", rowId: rowIds[rowIds.length - 1]};
+          cursorTarget = { type: "row", rowId: rowIds[rowIds.length - 1] };
         }
       }
 
       if (actionName === "RemoveRecord") {
         const rowId = action[2];
         if (rowId != null) {
-          cursorTarget = {type: "removed", rowId};
+          cursorTarget = { type: "removed", rowId };
         }
       }
 
       if (actionName === "BulkRemoveRecord") {
         const rowIds = Array.isArray(action[2]) ? action[2] : [];
         if (rowIds.length > 0) {
-          cursorTarget = {type: "removed", rowId: rowIds[rowIds.length - 1]};
+          cursorTarget = { type: "removed", rowId: rowIds[rowIds.length - 1] };
         }
       }
     }
@@ -267,7 +268,7 @@ const widget = Object.freeze({
     }
 
     if (nextCursorRowId != null) {
-      await grist.setCursorPos({rowId: nextCursorRowId});
+      await grist.setCursorPos({ rowId: nextCursorRowId });
     }
 
     return result;
@@ -463,10 +464,18 @@ async function createSharedConfigTable(tableId, configName, code) {
   }
 
   await applyDocUserActions([
-    ["AddTable", cleanTableId, [
-      {id: SHARED_NAME_COLUMN, type: "Text"},
-      {id: SHARED_CODE_COLUMN, type: "Text"}
-    ]]
+    ["AddRawTable", cleanTableId],
+    ["RemoveColumn", cleanTableId, "A"],
+    ["RemoveColumn", cleanTableId, "B"],
+    ["RemoveColumn", cleanTableId, "C"],
+    ["AddColumn", cleanTableId, SHARED_NAME_COLUMN, {
+      type: "Text",
+      isFormula: false
+    }],
+    ["AddColumn", cleanTableId, SHARED_CODE_COLUMN, {
+      type: "Text",
+      isFormula: false
+    }]
   ]);
 
   await applyDocUserActions([
@@ -578,7 +587,7 @@ function ensureMonacoEditor() {
             value: configCodeFallback.value,
             language: "javascript",
             automaticLayout: true,
-            minimap: {enabled: false},
+            minimap: { enabled: false },
             scrollBeyondLastLine: false,
             fontSize: 13,
             tabSize: 2,
@@ -606,7 +615,7 @@ async function openConfigDialog() {
   clearStatus("all");
 
   if (currentConfigOptions.configSource === CONFIG_SOURCE_TABLE) {
-    await loadSharedConfigIntoEditor({quietOnSuccess: true});
+    await loadSharedConfigIntoEditor({ quietOnSuccess: true });
   } else {
     setEditorValue(currentConfigOptions.configCode);
   }
@@ -675,7 +684,7 @@ async function handleConfigSourceChange() {
   }
 }
 
-async function loadSharedConfigIntoEditor({quietOnSuccess = false} = {}) {
+async function loadSharedConfigIntoEditor({ quietOnSuccess = false } = {}) {
   try {
     const tableId = validateSharedTableId(sharedConfigTableIdInput.value);
     const configName = validateSharedConfigName(sharedConfigNameInput.value);

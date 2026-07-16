@@ -56,7 +56,7 @@ Required columns:
 | `Name` | Text | Configuration name, for example `default`, `admin`, or `records`. |
 | `Code` | Text | JavaScript code defining `function get_buttons()`. |
 
-If the configured shared table does not exist, the configuration panel shows a **Create table** button. It creates the table with the required columns and inserts the current editor code as the first named configuration.
+If the configured shared table does not exist, the configuration panel shows a **Create table** button. It creates a data table without adding a document page, adds the required columns, and inserts the current editor code as the first named configuration.
 
 When using shared mode:
 
