@@ -72,7 +72,11 @@ Examples:
 
 For the full list of supported action names, see Grist source: `grist-core/app/common/DocActions.ts`.
 
-If the UserAction batch contains one or more `"AddRecord"` actions, the widget sets the cursor to the **last** created record **only if** that AddRecord targets the **same table the widget is linked to**.
+After the UserAction batch, the widget moves the cursor according to the last applicable action targeting the table linked to the widget:
+
+* `AddRecord` / `BulkAddRecord`: the last created row, detecting automatically assigned row ids when possible
+* `UpdateRecord` / `BulkUpdateRecord`: the last updated row
+* `RemoveRecord` / `BulkRemoveRecord`: a nearby surviving row, preferring the next row and then the previous row
 
 ### New record action
 

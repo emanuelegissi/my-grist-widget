@@ -68,43 +68,81 @@ function execLink(url, target) {
   else window.open(url, target);
 }
 
+async function getSelectedTableId() {
+  if (typeof grist.getSelectedTableId === "function") return await grist.getSelectedTableId();
+  if (grist.selectedTable && typeof grist.selectedTable.getTableId === "function") return await grist.selectedTable.getTableId();
+  const table = grist.getTable?.();
+  if (table && typeof table.getTableId === "function") return await table.getTableId();
+  throw new Error("Unable to determine the selected table id.");
+}
+
+async function fetchSelectedTableData() {
+  if (typeof grist.fetchSelectedTable === "function") return await grist.fetchSelectedTable();
+  if (typeof grist.docApi?.fetchSelectedTable === "function") return await grist.docApi.fetchSelectedTable();
+  throw new Error("Unable to read the selected table.");
+}
+
+function findClosestRowIdAfterRemoval(beforeIds, afterIdSet, removedRowId) {
+  const removedIndex = beforeIds.indexOf(removedRowId);
+  if (removedIndex === -1) return null;
+  for (let i = removedIndex + 1; i < beforeIds.length; i++) {
+    const rowId = beforeIds[i];
+    if (afterIdSet.has(rowId)) return rowId;
+  }
+  for (let i = removedIndex - 1; i >= 0; i--) {
+    const rowId = beforeIds[i];
+    if (afterIdSet.has(rowId)) return rowId;
+  }
+  return null;
+}
+
 async function applyUserActionsOnce(userActions) {
   if (!userActions.length) return;
 
-  // table linked to this widget
-  let selectedTableId = null;
-  try {
-    selectedTableId = await grist.selectedTable.getTableId();
-  } catch {
-    selectedTableId = null;
-  }
+  const selectedTableId = await getSelectedTableId();
+  const before = await fetchSelectedTableData();
+  const beforeIds = before.id || [];
+  const beforeIdSet = new Set(beforeIds);
+  let cursorTarget = null;
 
-  // last AddRecord that targets selected table
-  let addRecordIndex = null;
-  for (let i = userActions.length - 1; i >= 0; i--) {
-    const a = userActions[i];
-    if (Array.isArray(a) && a[0] === "AddRecord" && a[1] === selectedTableId) {
-      addRecordIndex = i;
-      break;
+  for (const action of userActions) {
+    if (!Array.isArray(action) || action.length < 2 || action[1] !== selectedTableId) continue;
+    const actionName = action[0];
+    if (actionName === "AddRecord") {
+      cursorTarget = action[2] == null ? { type: "autoAdd" } : { type: "row", rowId: action[2] };
+    } else if (actionName === "BulkAddRecord") {
+      const rowIds = Array.isArray(action[2]) ? action[2] : [];
+      const lastRowId = rowIds[rowIds.length - 1] ?? null;
+      cursorTarget = lastRowId == null ? { type: "autoAdd" } : { type: "row", rowId: lastRowId };
+    } else if (actionName === "UpdateRecord" && action[2] != null) {
+      cursorTarget = { type: "row", rowId: action[2] };
+    } else if (actionName === "BulkUpdateRecord") {
+      const rowIds = Array.isArray(action[2]) ? action[2] : [];
+      if (rowIds.length) cursorTarget = { type: "row", rowId: rowIds[rowIds.length - 1] };
+    } else if (actionName === "RemoveRecord" && action[2] != null) {
+      cursorTarget = { type: "removed", rowId: action[2] };
+    } else if (actionName === "BulkRemoveRecord") {
+      const rowIds = Array.isArray(action[2]) ? action[2] : [];
+      if (rowIds.length) cursorTarget = { type: "removed", rowId: rowIds[rowIds.length - 1] };
     }
   }
 
-  const res = await grist.docApi.applyUserActions(userActions);
-  const retValues = res && Array.isArray(res.retValues) ? res.retValues : null;
+  await grist.docApi.applyUserActions(userActions);
+  const after = await fetchSelectedTableData();
+  const afterIds = after.id || [];
+  const afterIdSet = new Set(afterIds);
+  const createdIds = afterIds.filter((id) => !beforeIdSet.has(id));
+  let nextCursorRowId = null;
 
-  // select last created record (only if it was in the widget-linked table)
-  if (retValues && addRecordIndex != null) {
-    const rv = retValues[addRecordIndex];
-
-    const newRowId =
-      (typeof rv === "number" && Number.isFinite(rv)) ? rv :
-      (rv && typeof rv === "object" && typeof rv.id === "number") ? rv.id :
-      null;
-
-    if (newRowId != null) {
-      await grist.setCursorPos({ rowId: newRowId });
-    }
+  if (cursorTarget?.type === "autoAdd") {
+    nextCursorRowId = createdIds[createdIds.length - 1] ?? null;
+  } else if (cursorTarget?.type === "row" && afterIdSet.has(cursorTarget.rowId)) {
+    nextCursorRowId = cursorTarget.rowId;
+  } else if (cursorTarget?.type === "removed") {
+    nextCursorRowId = findClosestRowIdAfterRemoval(beforeIds, afterIdSet, cursorTarget.rowId);
   }
+  if (nextCursorRowId == null && createdIds.length) nextCursorRowId = createdIds[createdIds.length - 1];
+  if (nextCursorRowId != null) await grist.setCursorPos({ rowId: nextCursorRowId });
 }
 
 /**
