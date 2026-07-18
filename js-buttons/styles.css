@@ -32,21 +32,20 @@ body {
 
 .widget {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
   width: 100%;
   height: 100%;
   min-height: 30px;
-  padding: 4px 24px 4px 4px;
+  overflow: auto;
+  padding: 4px;
 }
 
 .button-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   min-height: 24px;
+  padding-right: 20px;
 }
 
 .action-button,
@@ -60,12 +59,13 @@ body {
 
 .action-button {
   min-height: 24px;
-  padding: 4px 8px;
+  padding: 8px 12px;
   border: 1px solid var(--grist-border);
-  border-radius: 4px;
-  font-size: 13px;
-  color: var(--grist-text);
-  background: var(--grist-background);
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: bold;
+  color: #FFFFFF;
+  background: rgb(26, 115, 232);
   line-height: 18px;
   white-space: nowrap;
   cursor: pointer;
@@ -73,7 +73,7 @@ body {
 
 .action-button:hover:not(:disabled) {
   border-color: #C9C9C9;
-  background: var(--grist-hover);
+  filter: brightness(0.80);
 }
 
 .action-button:active:not(:disabled) {
@@ -83,10 +83,6 @@ body {
 .action-button:disabled {
   cursor: default;
   opacity: 0.55;
-}
-
-.action-button.custom-colored:hover:not(:disabled) {
-  filter: brightness(0.88);
 }
 
 .panel-config-button {
