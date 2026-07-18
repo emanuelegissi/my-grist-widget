@@ -1,71 +1,34 @@
 "use strict";
 
-/* =========================
-   STATE (Vue 3)
-========================= */
+const buttonRow = document.getElementById("buttonRow");
+let buttons = [];
+let busy = false;
 
-const state = {
-  btns: Vue.reactive([]),
-  busy: Vue.ref(false),
-};
-
-/* =========================
-   ERRORS
-========================= */
-
-function fail(text) {
-  const msg = String(text);
+function fail(error) {
+  const msg = error instanceof Error
+    ? error.message
+    : String(error).replace(/^Error:\s*/, "");
   console.error(msg);
   alert(msg);
 }
-
-/* =========================
-   TYPE CHECKS
-========================= */
 
 function isPlainObject(x) {
   return x != null && typeof x === "object" && !Array.isArray(x);
 }
 
-function isUserActionTuple(x) {
-  return Array.isArray(x) && typeof x[0] === "string" && x.length >= 2;
+function isUserAction(action) {
+  return Array.isArray(action) &&
+    typeof action[0] === "string" &&
+    action.length >= 2 &&
+    action[0] !== "NewRecord" &&
+    action[0] !== "Link";
 }
-
-function isNewRecordAction(x) {
-  return Array.isArray(x) && x[0] === "NewRecord";
-}
-
-function isLinkAction(x) {
-  return (
-    Array.isArray(x) &&
-    x[0] === "Link" &&
-    typeof x[1] === "string" &&
-    (x[2] == null || typeof x[2] === "string")
-  );
-}
-
-function isSupportedActionItem(x) {
-  return isUserActionTuple(x) || isNewRecordAction(x) || isLinkAction(x);
-}
-
-/* =========================
-   NORMALIZE CELL -> [buttons]
-========================= */
 
 function normalizeButtonsCell(cell) {
   if (cell == null) return [];
   if (Array.isArray(cell)) return cell;
   if (isPlainObject(cell)) return [cell];
   throw new Error(`The actionCol cell must be null, a button object, or an array of button objects.`);
-}
-
-/* =========================
-   EXECUTION
-========================= */
-
-function execLink(url, target) {
-  if (!target) window.location.href = url;
-  else window.open(url, target);
 }
 
 async function getSelectedTableId() {
@@ -96,120 +59,85 @@ function findClosestRowIdAfterRemoval(beforeIds, afterIdSet, removedRowId) {
   return null;
 }
 
-async function applyUserActionsOnce(userActions) {
-  if (!userActions.length) return;
+function getCursorTarget(action, selectedTableId) {
+  if (action[1] !== selectedTableId) return null;
 
-  const selectedTableId = await getSelectedTableId();
-  const before = await fetchSelectedTableData();
-  const beforeIds = before.id || [];
-  const beforeIdSet = new Set(beforeIds);
-  let cursorTarget = null;
+  const actionName = action[0];
+  const records = action[2];
+  const rowId = Array.isArray(records)
+    ? records[records.length - 1]
+    : records;
 
-  for (const action of userActions) {
-    if (!Array.isArray(action) || action.length < 2 || action[1] !== selectedTableId) continue;
-    const actionName = action[0];
-    if (actionName === "AddRecord") {
-      cursorTarget = action[2] == null ? { type: "autoAdd" } : { type: "row", rowId: action[2] };
-    } else if (actionName === "BulkAddRecord") {
-      const rowIds = Array.isArray(action[2]) ? action[2] : [];
-      const lastRowId = rowIds[rowIds.length - 1] ?? null;
-      cursorTarget = lastRowId == null ? { type: "autoAdd" } : { type: "row", rowId: lastRowId };
-    } else if (actionName === "UpdateRecord" && action[2] != null) {
-      cursorTarget = { type: "row", rowId: action[2] };
-    } else if (actionName === "BulkUpdateRecord") {
-      const rowIds = Array.isArray(action[2]) ? action[2] : [];
-      if (rowIds.length) cursorTarget = { type: "row", rowId: rowIds[rowIds.length - 1] };
-    } else if (actionName === "RemoveRecord" && action[2] != null) {
-      cursorTarget = { type: "removed", rowId: action[2] };
-    } else if (actionName === "BulkRemoveRecord") {
-      const rowIds = Array.isArray(action[2]) ? action[2] : [];
-      if (rowIds.length) cursorTarget = { type: "removed", rowId: rowIds[rowIds.length - 1] };
-    }
+  if (actionName === "AddRecord" || actionName === "BulkAddRecord") {
+    return { type: "added", rowId };
   }
+  if (actionName === "UpdateRecord" || actionName === "BulkUpdateRecord") {
+    return rowId == null ? null : { type: "row", rowId };
+  }
+  if (actionName === "RemoveRecord" || actionName === "BulkRemoveRecord") {
+    return rowId == null ? null : { type: "removed", rowId };
+  }
+  return null;
+}
 
-  await grist.docApi.applyUserActions(userActions);
-  const after = await fetchSelectedTableData();
-  const afterIds = after.id || [];
-  const afterIdSet = new Set(afterIds);
-  const createdIds = afterIds.filter((id) => !beforeIdSet.has(id));
+function getReturnedRowId(result) {
+  let value = result?.retValues?.[0];
+  if (Array.isArray(value)) value = value[value.length - 1];
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (value && typeof value.id === "number" && Number.isFinite(value.id)) return value.id;
+  return null;
+}
+
+async function applyUserAction(action) {
+  const cursorTarget = getCursorTarget(action, await getSelectedTableId());
+  const beforeIds = cursorTarget?.type === "removed"
+    ? (await fetchSelectedTableData()).id || []
+    : [];
+  const result = await grist.docApi.applyUserActions([action]);
+  if (!cursorTarget) return;
+
   let nextCursorRowId = null;
 
-  if (cursorTarget?.type === "autoAdd") {
-    nextCursorRowId = createdIds[createdIds.length - 1] ?? null;
-  } else if (cursorTarget?.type === "row" && afterIdSet.has(cursorTarget.rowId)) {
+  if (cursorTarget.type === "added") {
+    nextCursorRowId = cursorTarget.rowId ?? getReturnedRowId(result);
+  } else if (cursorTarget.type === "row") {
     nextCursorRowId = cursorTarget.rowId;
-  } else if (cursorTarget?.type === "removed") {
+  } else {
+    const afterIds = (await fetchSelectedTableData()).id || [];
+    const afterIdSet = new Set(afterIds);
     nextCursorRowId = findClosestRowIdAfterRemoval(beforeIds, afterIdSet, cursorTarget.rowId);
   }
-  if (nextCursorRowId == null && createdIds.length) nextCursorRowId = createdIds[createdIds.length - 1];
+
   if (nextCursorRowId != null) await grist.setCursorPos({ rowId: nextCursorRowId });
 }
 
-/**
- * Simplified rule:
- * 1) Run ALL user actions in ONE batch (if any).
- * 2) Then run remaining actions in order: NewRecord / Link.
- */
 async function runActions(actions) {
-  const userActions = [];
-  const postActions = [];
-
-  for (const a of actions) {
-    if (!isSupportedActionItem(a)) {
+  for (const action of actions) {
+    if (!isUserAction(action)) {
       throw new Error(
-        `Invalid action item. Allowed: UserAction tuple ["Action","Table",...], ["NewRecord"], ["Link", url, target?].`
+        `Invalid action item. Expected a Grist UserAction tuple ["Action","Table",...].`
       );
     }
-    if (isNewRecordAction(a) || isLinkAction(a)) postActions.push(a);
-    else userActions.push(a); // user action tuple
   }
 
-  await applyUserActionsOnce(userActions);
-
-  for (const a of postActions) {
-    if (isNewRecordAction(a)) {
-      await grist.setCursorPos({ rowId: "new" });
-    } else if (isLinkAction(a)) {
-      execLink(a[1], a[2]);
-    }
-  }
+  for (const action of actions) await applyUserAction(action);
 }
 
 async function onClickButton(model) {
-  if (state.busy.value || model.disabled) return;
+  if (busy || model.disabled) return;
 
-  state.busy.value = true;
+  setBusy(true);
   try {
-    await runActions(model._actions);
+    await runActions(model.actions);
   } catch (e) {
-    fail(String(e).replace(/^Error:\s*/, ""));
+    fail(e);
   } finally {
-    state.busy.value = false;
+    setBusy(false);
   }
 }
 
-/* =========================
-   VALIDATE + BUILD UI MODELS
-========================= */
-
-function makeBtnKey(rowId, i, b) {
-  return [
-    rowId || "row",
-    i,
-    b.button,
-    b.color ?? "",
-    b.actions.length,
-    b.description ?? ""
-  ].join("|");
-}
-
-function buildButtons(cellValue, rowId) {
-  const raw = normalizeButtonsCell(cellValue);
-  const built = [];
-
-  for (let i = 0; i < raw.length; i++) {
-    const b = raw[i];
-
+function buildButtons(cellValue) {
+  return normalizeButtonsCell(cellValue).map((b) => {
     if (!isPlainObject(b)) throw new Error(`Each button must be an object.`);
 
     if (typeof b.button !== "string" || !b.button.trim()) {
@@ -228,36 +156,57 @@ function buildButtons(cellValue, rowId) {
       throw new Error(`Button "${b.button}": optional "color" must be a string.`);
     }
 
-    // Validate action items
     for (const a of b.actions) {
-      if (!isSupportedActionItem(a)) {
+      if (!isUserAction(a)) {
         throw new Error(
           `Button "${b.button}" has an invalid action item. ` +
-          `Allowed: UserAction tuple ["Action","Table",...], ["NewRecord"], ["Link", url, target?].`
+          `Expected a Grist UserAction tuple ["Action","Table",...].`
         );
       }
     }
 
-    const model = {
-      id: makeBtnKey(rowId, i, b),
+    return {
       label: b.button,
-      desc: b.description ?? "",
+      description: b.description ?? "",
       color: b.color ?? "",
       disabled: b.actions.length === 0,
-      _actions: b.actions,
-      onclick: null,
+      actions: b.actions,
     };
-
-    model.onclick = () => onClickButton(model);
-    built.push(model);
-  }
-
-  return built;
+  });
 }
 
-/* =========================
-   GRIST -> UI
-========================= */
+function createButtonElement(model) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "action-button";
+  button.textContent = model.label;
+  button.disabled = busy || model.disabled;
+
+  if (model.description) {
+    button.title = model.description;
+  }
+  if (model.color) {
+    button.style.backgroundColor = model.color;
+  }
+  if (!model.disabled) button.addEventListener("click", () => onClickButton(model));
+  return button;
+}
+
+function renderButtons() {
+  buttonRow.replaceChildren(...buttons.map(createButtonElement));
+}
+
+function setButtons(nextButtons) {
+  buttons = nextButtons;
+  renderButtons();
+}
+
+function setBusy(nextBusy) {
+  busy = nextBusy;
+  [...buttonRow.querySelectorAll("button")].forEach((button, index) => {
+    button.disabled = busy || Boolean(buttons[index]?.disabled);
+  });
+}
 
 function onRecord(record, mappings) {
   try {
@@ -265,7 +214,7 @@ function onRecord(record, mappings) {
     if (!colId) throw new Error(`Missing column mapping in widget settings (actionCol).`);
 
     if (!record || typeof record !== "object") {
-      state.btns.length = 0;
+      setButtons([]);
       return;
     }
 
@@ -273,63 +222,34 @@ function onRecord(record, mappings) {
       throw new Error(`Mapped column "${colId}" is not visible in the current view.`);
     }
 
-    const built = buildButtons(record[colId], record.id);
-    state.btns.length = 0;
-    state.btns.push(...built);
+    setButtons(buildButtons(record[colId]));
   } catch (e) {
-    state.btns.length = 0;
-    fail(String(e).replace(/^Error:\s*/, ""));
+    setButtons([]);
+    fail(e);
   }
 }
 
 function onNewRecord() {
-  state.btns.length = 0;
+  setButtons([]);
 }
 
-/* =========================
-   VUE APP
-========================= */
+grist.onRecord(onRecord);
+grist.onNewRecord(onNewRecord);
 
-function loadVueApp() {
-  const { createApp } = Vue;
-  createApp({
-    data() {
-      return { btns: state.btns, busy: state.busy };
+grist.ready({
+  requiredAccess: "full",
+  allowSelectBy: true,
+  columns: [
+    {
+      name: "actionCol",
+      title: "Actions",
+      optional: false,
+      type: "Any",
+      description:
+        "Null, a button object, or an array of button objects. " +
+        'Button: {button, actions, description?, color?}. ' +
+        "Actions: Grist UserAction tuples.",
+      allowMultiple: false,
     },
-  }).mount("#app");
-}
-
-/* =========================
-   BOOTSTRAP
-========================= */
-
-function ready(fn) {
-  if (document.readyState !== "loading") fn();
-  else document.addEventListener("DOMContentLoaded", fn);
-}
-
-ready(() => {
-  loadVueApp();
-
-  grist.onRecord(onRecord);
-  grist.onNewRecord(onNewRecord);
-
-  grist.ready({
-    requiredAccess: "full",
-    allowSelectBy: true,
-    columns: [
-      {
-        name: "actionCol",
-        title: "Actions",
-        optional: false,
-        type: "Any",
-        description:
-          "Null, a button object, or an array of button objects. " +
-          'Button: {button, actions, description?, color?}. ' +
-          'Actions: UserAction tuples, ["NewRecord"], ["Link", url, target?].',
-        allowMultiple: false,
-      },
-    ],
-  });
+  ],
 });
-

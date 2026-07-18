@@ -31,23 +31,22 @@ Each button is an object with the following schema:
 Note that:
 
 * If `actions` is an **empty array** (`[]`), the button is rendered **disabled**.
-* `description` is optional and is displayed as a tooltip (implementation dependent: native tooltip or custom tooltip).
+* `description` is optional and is displayed as the button's native tooltip.
 * `color` is an optional CSS color string, applied as the button background.
 
 ## Action list
 
-`actions` is an array whose items can be **any combination** of the following action types:
-
-1. **Grist UserAction** (data engine action)
-2. **New record action**
-3. **Go to page action**
+`actions` is an array of **Grist UserActions** (data engine actions).
 
 When a button is clicked:
 
-1. All **Grist UserActions** found in the `actions` array are executed first in **one single batch** using `grist.docApi.applyUserActions(...)`.
-2. After that batch completes, the widget executes the remaining actions (**NewRecord** and **Link**) **in the same order they appear** in the `actions` array.
+1. Actions are executed **one at a time**, in the same order in which they appear in the `actions` array.
+2. Each **Grist UserAction** is submitted separately using `grist.docApi.applyUserActions([action])`.
+3. The widget waits for each action to finish before starting the next action.
 
 While executing, the widget disables all buttons until completion.
+
+If an action fails, the widget stops the sequence and does not execute later actions. Actions that completed earlier remain applied because every Grist UserAction is a separate document operation.
 
 ### Grist UserAction
 
@@ -72,43 +71,13 @@ Examples:
 
 For the full list of supported action names, see Grist source: `grist-core/app/common/DocActions.ts`.
 
-After the UserAction batch, the widget moves the cursor according to the last applicable action targeting the table linked to the widget:
+After each Grist UserAction, the widget moves the cursor when that action targets the table linked to the widget:
 
-* `AddRecord` / `BulkAddRecord`: the last created row, detecting automatically assigned row ids when possible
-* `UpdateRecord` / `BulkUpdateRecord`: the last updated row
-* `RemoveRecord` / `BulkRemoveRecord`: a nearby surviving row, preferring the next row and then the previous row
+* `AddRecord` / `BulkAddRecord`: the last created row, using the row ids returned by Grist when ids are assigned automatically
+* `UpdateRecord` / `BulkUpdateRecord`: the last supplied row id
+* `RemoveRecord` / `BulkRemoveRecord`: a nearby surviving row, preferring the next row and then the previous row; bulk removal uses the last supplied row id as its reference point
 
-### New record action
-
-A New record action is:
-
-```js
-["NewRecord"]
-```
-
-This action creates/selects a new record by setting the cursor position to:
-
-```js
-await grist.setCursorPos({ rowId: "new" });
-```
-
-### Go to page action
-
-A Go to page action is:
-
-```js
-["Link", url, target]
-```
-
-Where:
-
-* **url**: string URL to open
-* **target** (optional): if omitted/empty, open in the same tab; if `"_blank"`, open in a new tab (other targets behave like `window.open` targets)
-
-Examples:
-
-* `["Link", "https://example.com"]`
-* `["Link", "https://example.com", "_blank"]`
+Only removal actions take before-and-after table snapshots. They use `fetchSelectedTable()`, so the next/previous record is determined from the custom section's filtered and linked row context.
 
 ## Validation rules summary
 
@@ -124,14 +93,6 @@ The widget alerts errors when:
 
 ```python
 BS = []  # buttons
-
-def nb(label, desc, color="Green"):  # new record button
-  acts = (("NewRecord",),)
-  BS.append({"button": label, "description": desc, "actions": acts, "color": color})
-
-def lb(label, desc, url, color=None):  # link page button
-  acts = (("Link", url, "_blank"),)
-  BS.append({"button": label, "description": desc, "actions": acts, "color": color})
 
 def ab(label, desc, table, fs=None, color="Green"):  # add record button
   fs = fs is not None and fs or {}
@@ -156,7 +117,7 @@ def ub(label, desc, table, rs=None, fs=None, color=None):  # update record butto
 
 # Buttons
 
-nb("+", "Crea dichiarazione")
+ab("+", "Crea dichiarazione", "Dichiarazioni")
 
 if not $Ha_prestazioni:
     rb("Elimina", "Elimina dichiarazione", "Dichiarazioni")

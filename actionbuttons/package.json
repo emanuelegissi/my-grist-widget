@@ -2,7 +2,7 @@
   "name": "@emanuelegissi/widget-actionbuttons",
   "description": "Configurable buttons that send user actions to the data engine.",
   "homePage": "https://github.com/emanuelegissi/my-grist-widget",
-  "version": "0.0.1",
+  "version": "0.0.5",
   "grist": {
     "name": "Action buttons",
     "url": "https://emanuelegissi.github.io/my-grist-widget/actionbuttons/index.html",
