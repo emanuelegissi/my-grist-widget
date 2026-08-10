@@ -80,26 +80,37 @@ function getCursorTarget(action, selectedTableId) {
   return null;
 }
 
-function getReturnedRowId(result) {
-  let value = result?.retValues?.[0];
+function getReturnedRowId(result, actionIndex) {
+  let value = result?.retValues?.[actionIndex];
   if (Array.isArray(value)) value = value[value.length - 1];
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (value && typeof value.id === "number" && Number.isFinite(value.id)) return value.id;
   return null;
 }
 
-async function applyUserAction(action) {
-  const cursorTarget = getCursorTarget(action, await getSelectedTableId());
+async function applyUserActions(actions) {
+  const selectedTableId = await getSelectedTableId();
+  let cursorTarget = null;
+  let cursorActionIndex = -1;
+
+  actions.forEach((action, index) => {
+    const target = getCursorTarget(action, selectedTableId);
+    if (target) {
+      cursorTarget = target;
+      cursorActionIndex = index;
+    }
+  });
+
   const beforeIds = cursorTarget?.type === "removed"
     ? (await fetchSelectedTableData()).id || []
     : [];
-  const result = await grist.docApi.applyUserActions([action]);
+  const result = await grist.docApi.applyUserActions(actions);
   if (!cursorTarget) return;
 
   let nextCursorRowId = null;
 
   if (cursorTarget.type === "added") {
-    nextCursorRowId = cursorTarget.rowId ?? getReturnedRowId(result);
+    nextCursorRowId = cursorTarget.rowId ?? getReturnedRowId(result, cursorActionIndex);
   } else if (cursorTarget.type === "row") {
     nextCursorRowId = cursorTarget.rowId;
   } else {
@@ -120,7 +131,7 @@ async function runActions(actions) {
     }
   }
 
-  for (const action of actions) await applyUserAction(action);
+  await applyUserActions(actions);
 }
 
 async function onClickButton(model) {
