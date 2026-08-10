@@ -150,7 +150,7 @@ async function runActions(actions) {
 
 async function onClickButton(model) {
   if (busy || model.disabled) return;
-  if (model.confirm != null && !window.confirm(model.confirm)) return;
+  if (model.confirm && !window.confirm(model.confirm)) return;
 
   setBusy(true);
   try {
@@ -178,8 +178,8 @@ function buildButtons(cellValue) {
       throw new Error(`Button "${b.button}": optional "description" must be a string.`);
     }
 
-    if (b.confirm != null && typeof b.confirm !== "string") {
-      throw new Error(`Button "${b.button}": optional "confirm" must be a string.`);
+    if (b.confirm != null && b.confirm !== false && typeof b.confirm !== "string") {
+      throw new Error(`Button "${b.button}": optional "confirm" must be a string or false.`);
     }
 
     if (b.color != null && typeof b.color !== "string") {
@@ -198,7 +198,7 @@ function buildButtons(cellValue) {
     return {
       label: b.button,
       description: b.description ?? "",
-      confirm: b.confirm ?? null,
+      confirm: b.confirm ?? false,
       color: b.color ?? "",
       disabled: b.actions.length === 0,
       actions: b.actions,

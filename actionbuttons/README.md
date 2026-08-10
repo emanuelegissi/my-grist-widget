@@ -69,7 +69,7 @@ Supported properties:
 | `button` | Yes | Non-empty button label. |
 | `actions` | Yes | Array of Grist UserActions. An empty array disables the button. |
 | `description` | No | Native tooltip shown through the button's `title`. |
-| `confirm` | No | Confirmation text displayed before actions run. Canceling performs no actions. |
+| `confirm` | No | A non-empty string displays a confirmation dialog before actions run. An empty string or `false` skips confirmation. Canceling performs no actions. |
 | `color` | No | CSS background color. |
 
 ## UserActions
