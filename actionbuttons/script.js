@@ -4,12 +4,22 @@ const buttonRow = document.getElementById("buttonRow");
 let buttons = [];
 let busy = false;
 
-function fail(error) {
-  const msg = error instanceof Error
+function getErrorMessage(error) {
+  return error instanceof Error
     ? error.message
     : String(error).replace(/^Error:\s*/, "");
+}
+
+function fail(error) {
+  const msg = getErrorMessage(error);
   console.error(msg);
   alert(msg);
+}
+
+function warnNavigationFailure(error) {
+  const msg = getErrorMessage(error);
+  console.warn("Actions were applied, but cursor navigation failed:", msg);
+  alert(`Actions were applied successfully, but cursor navigation failed:\n${msg}`);
 }
 
 function isPlainObject(x) {
@@ -103,21 +113,27 @@ async function applyUserActions(actions) {
     ? (await fetchSelectedTableData()).id || []
     : [];
   const result = await grist.docApi.applyUserActions(actions);
-  if (!cursorTarget) return;
+  if (!cursorTarget) return result;
 
-  let nextCursorRowId = null;
+  try {
+    let nextCursorRowId = null;
 
-  if (cursorTarget.type === "added") {
-    nextCursorRowId = cursorTarget.rowId ?? getReturnedRowId(result, cursorActionIndex);
-  } else if (cursorTarget.type === "row") {
-    nextCursorRowId = cursorTarget.rowId;
-  } else {
-    const afterIds = (await fetchSelectedTableData()).id || [];
-    const afterIdSet = new Set(afterIds);
-    nextCursorRowId = findClosestRowIdAfterRemoval(beforeIds, afterIdSet, cursorTarget.rowId);
+    if (cursorTarget.type === "added") {
+      nextCursorRowId = cursorTarget.rowId ?? getReturnedRowId(result, cursorActionIndex);
+    } else if (cursorTarget.type === "row") {
+      nextCursorRowId = cursorTarget.rowId;
+    } else {
+      const afterIds = (await fetchSelectedTableData()).id || [];
+      const afterIdSet = new Set(afterIds);
+      nextCursorRowId = findClosestRowIdAfterRemoval(beforeIds, afterIdSet, cursorTarget.rowId);
+    }
+
+    if (nextCursorRowId != null) await grist.setCursorPos({ rowId: nextCursorRowId });
+  } catch (error) {
+    warnNavigationFailure(error);
   }
 
-  if (nextCursorRowId != null) await grist.setCursorPos({ rowId: nextCursorRowId });
+  return result;
 }
 
 async function runActions(actions) {
