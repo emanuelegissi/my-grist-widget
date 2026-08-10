@@ -14,7 +14,7 @@ The widget requires full document access because its buttons apply Grist UserAct
 
 - configuration from one mapped Grist column;
 - one button object or an array of buttons per record;
-- optional button descriptions and background colors;
+- optional button descriptions, confirmations, and background colors;
 - disabled buttons when the action list is empty;
 - Grist UserActions submitted atomically in their configured order;
 - all buttons disabled while an action sequence is running;
@@ -54,6 +54,7 @@ A button has this shape:
 {
   button: "Approve",
   description: "Approve the selected task",
+  confirm: "Approve this task?",
   color: "#16B378",
   actions: [
     ["UpdateRecord", "Tasks", 12, {Status: "Approved"}]
@@ -68,6 +69,7 @@ Supported properties:
 | `button` | Yes | Non-empty button label. |
 | `actions` | Yes | Array of Grist UserActions. An empty array disables the button. |
 | `description` | No | Native tooltip shown through the button's `title`. |
+| `confirm` | No | Confirmation text displayed before actions run. Canceling performs no actions. |
 | `color` | No | CSS background color. |
 
 ## UserActions
@@ -164,6 +166,7 @@ if $Status == "Draft":
 buttons.append({
   "button": "Delete",
   "description": "Delete this task",
+  "confirm": "Delete this task?",
   "color": "#D0021B",
   "actions": (
     ("RemoveRecord", "Tasks", $id),
