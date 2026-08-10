@@ -19,9 +19,7 @@ function isPlainObject(x) {
 function isUserAction(action) {
   return Array.isArray(action) &&
     typeof action[0] === "string" &&
-    action.length >= 2 &&
-    action[0] !== "NewRecord" &&
-    action[0] !== "Link";
+    action.length >= 2;
 }
 
 function normalizeButtonsCell(cell) {
