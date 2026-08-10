@@ -1,24 +1,24 @@
 # Specification of Grist actionbuttons custom widget
 
-This widget renders one or more **configurable, colored action buttons** 
+This widget renders one or more configurable, colored action buttons 
 for the currently selected record.
 
 When the user clicks a button, the widget executes the button’s configured actions.
-While actions are running, **all buttons are disabled** to prevent double-clicks.
-Any configuration or runtime error is shown via a browser **alert**.
+While actions are running, all buttons are disabled to prevent double-clicks.
+Any configuration or runtime error is shown via a browser alert.
 
 ## Data source and column mapping
 
 The widget reads its configuration from a single mapped column
-named **`actionCol`** (configured in the widget settings).
+named `actionCol`, configured in the widget settings.
 
 For the selected record, the cell value of `actionCol` may be:
 
-* `null` / empty → **no buttons**
-* a **single button object**
-* an **array of button objects**
+* `null` / empty → no buttons
+* a single button object
+* an array of button objects
 
-The widget validates the cell content and alerts a **meaningful error** if it is invalid.
+The widget validates the cell content and alerts a meaningful error if it is invalid.
 
 ## Button definition
 
@@ -30,23 +30,16 @@ Each button is an object with the following schema:
 
 Note that:
 
-* If `actions` is an **empty array** (`[]`), the button is rendered **disabled**.
+* If `actions` is an empty array (`[]`), the button is rendered disabled.
 * `description` is optional and is displayed as the button's native tooltip.
 * `color` is an optional CSS color string, applied as the button background.
 
 ## Action list
 
-`actions` is an array of **Grist UserActions** (data engine actions).
+`actions` is an array of Grist UserActions, data engine actions.
 
-When a button is clicked:
-
-1. Actions are executed **one at a time**, in the same order in which they appear in the `actions` array.
-2. Each **Grist UserAction** is submitted separately using `grist.docApi.applyUserActions([action])`.
-3. The widget waits for each action to finish before starting the next action.
-
+When a button is clicked, actions are executed with `grist.docApi.applyUserActions(actions)`.
 While executing, the widget disables all buttons until completion.
-
-If an action fails, the widget stops the sequence and does not execute later actions. Actions that completed earlier remain applied because every Grist UserAction is a separate document operation.
 
 ### Grist UserAction
 
@@ -76,8 +69,6 @@ After each Grist UserAction, the widget moves the cursor when that action target
 * `AddRecord` / `BulkAddRecord`: the last created row, using the row ids returned by Grist when ids are assigned automatically
 * `UpdateRecord` / `BulkUpdateRecord`: the last supplied row id
 * `RemoveRecord` / `BulkRemoveRecord`: a nearby surviving row, preferring the next row and then the previous row; bulk removal uses the last supplied row id as its reference point
-
-Only removal actions take before-and-after table snapshots. They use `fetchSelectedTable()`, so the next/previous record is determined from the custom section's filtered and linked row context.
 
 ## Validation rules summary
 
