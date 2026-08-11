@@ -47,7 +47,9 @@ A listed name is resolved in this order:
 
 Column IDs are recommended because labels can be changed and two columns may share the same label. If a label is ambiguous, the widget asks for a column ID instead.
 
-Every listed column must exist and be available to the linked widget. Blank lists, invalid JSON, non-string entries, duplicate names, missing fields, ambiguous labels, and unsupported column types produce a configuration alert.
+Every listed column must exist and be readable under the current access rules. Blank lists, invalid JSON, non-string entries, duplicate names, missing fields, ambiguous labels, and unsupported column types produce a configuration alert.
+
+If Grist omits a listed column from the selected-record event (for example, because it is not exposed by the custom section's view), Dynamic Card reads that value directly from the underlying selected table. Grist access rules still apply.
 
 ## Supported field types
 
@@ -104,7 +106,7 @@ Open the widget configuration and map the column that contains the dynamic field
 
 ### “Field ... does not exist”
 
-Check spelling and prefer the stable column ID. Also confirm that the column is available to the widget's linked table/view and permitted by any access rules.
+Check spelling and prefer the stable column ID. Also confirm that the column belongs to the widget's linked table and is permitted by any access rules.
 
 ### “Unsupported Grist type”
 

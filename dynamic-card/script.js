@@ -21,6 +21,7 @@ const state = {
   tableId: null,
   definitionKey: "",
   renderedRecordId: null,
+  fullRecordCache: null,
   controls: new Map(),
   timers: new Map(),
   pending: new Map(),
@@ -193,6 +194,11 @@ async function fetchMetadata(record) {
       return state.metadata;
     }
 
+    if (state.tableId !== tableId) {
+      state.fullRecordCache = null;
+    }
+    state.tableId = tableId;
+
     const [tables, columns] = await Promise.all([
       grist.docApi.fetchTable("_grist_Tables"),
       grist.docApi.fetchTable("_grist_Tables_column")
@@ -222,7 +228,6 @@ async function fetchMetadata(record) {
       });
     }
 
-    state.tableId = tableId;
     return metadata.size ? metadata : fallback;
   } catch (error) {
     console.warn("Dynamic Card could not read column metadata; using record values as a fallback.", error);
@@ -243,7 +248,7 @@ function inferType(value) {
   return "Text";
 }
 
-function resolveFields(names, metadata, record) {
+function resolveFields(names, metadata) {
   const labelMatches = new Map();
 
   for (const column of metadata.values()) {
@@ -263,8 +268,8 @@ function resolveFields(names, metadata, record) {
       column = matches[0];
     }
 
-    if (!column || !Object.prototype.hasOwnProperty.call(record, column.colId)) {
-      throw new Error(`Field "${name}" does not exist in the linked table or is not available to this widget.`);
+    if (!column) {
+      throw new Error(`Field "${name}" does not exist in the linked table.`);
     }
 
     const type = baseType(column.type);
@@ -274,6 +279,90 @@ function resolveFields(names, metadata, record) {
 
     return { ...column, baseType: type };
   });
+}
+
+function decodeCellValue(value) {
+  if (typeof grist.decodeObject === "function") {
+    return grist.decodeObject(value);
+  }
+
+  if (Array.isArray(value) && value[0] === "L") {
+    return value.slice(1);
+  }
+
+  return value;
+}
+
+async function fetchFullRecord(rowId) {
+  const tableId = state.tableId || await getSelectedTableId();
+  const cached = state.fullRecordCache;
+
+  // Grist often emits an onRecord callback immediately after this widget
+  // saves. Reuse the just-fetched row briefly instead of downloading the
+  // selected table again for that echo event.
+  if (cached && cached.tableId === tableId && cached.rowId === rowId &&
+      Date.now() - cached.fetchedAt < 1000) {
+    return { ...cached.record };
+  }
+
+  const table = await grist.docApi.fetchTable(tableId);
+  const rowIndex = Array.isArray(table.id)
+    ? table.id.findIndex(id => String(id) === String(rowId))
+    : -1;
+
+  if (rowIndex < 0) {
+    throw new Error(`Record ${rowId} was not found in the linked table.`);
+  }
+
+  const fullRecord = { id: rowId };
+  for (const [columnId, values] of Object.entries(table)) {
+    if (columnId !== "id" && Array.isArray(values)) {
+      fullRecord[columnId] = decodeCellValue(values[rowIndex]);
+    }
+  }
+
+  state.fullRecordCache = {
+    tableId,
+    rowId,
+    fetchedAt: Date.now(),
+    record: fullRecord
+  };
+  return { ...fullRecord };
+}
+
+async function includeMissingFields(record, fields) {
+  const missing = fields.filter(field =>
+    !Object.prototype.hasOwnProperty.call(record, field.colId)
+  );
+
+  if (!missing.length) {
+    return record;
+  }
+
+  let fullRecord;
+  try {
+    fullRecord = await fetchFullRecord(record.id);
+  } catch (error) {
+    const names = missing.map(field => `"${field.label}"`).join(", ");
+    throw new Error(
+      `The following fields exist but could not be read from the linked table: ${names}. ` +
+      `${error.message || error}`
+    );
+  }
+
+  const stillMissing = missing.filter(field =>
+    !Object.prototype.hasOwnProperty.call(fullRecord, field.colId)
+  );
+  if (stillMissing.length) {
+    throw new Error(
+      `The following fields are not available under the current access rules: ` +
+      `${stillMissing.map(field => `"${field.label}"`).join(", ")}.`
+    );
+  }
+
+  // Values from onRecord are the freshest for columns exposed by the section;
+  // full-table values fill only the columns omitted from that payload.
+  return { ...fullRecord, ...record };
 }
 
 function choiceValues(column, currentValue) {
@@ -653,6 +742,10 @@ async function saveValue(rowId, column, value) {
     if (state.record?.id === rowId) {
       state.record[column.colId] = decodedSavedValue(column, value);
     }
+    if (state.fullRecordCache?.rowId === rowId) {
+      state.fullRecordCache.record[column.colId] = decodedSavedValue(column, value);
+      state.fullRecordCache.fetchedAt = Date.now();
+    }
 
     const pending = state.pending.get(column.colId);
     if (pending?.sequence === sequence) {
@@ -805,7 +898,11 @@ async function handleRecord(record, mappings) {
       return;
     }
 
-    const fields = resolveFields(names, metadata, record);
+    const fields = resolveFields(names, metadata);
+    record = await includeMissingFields(record, fields);
+    if (eventSequence !== state.eventSequence) {
+      return;
+    }
     const definitionKey = JSON.stringify(fields.map(field => [
       field.colId,
       field.type,
