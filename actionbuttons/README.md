@@ -179,7 +179,7 @@ sandboxed from the widget page and can also use browser globals such as `fetch`,
 are trusted with the document; anyone who can change the mapped cell or its
 formula can change the code that runs.
 
-### Add a parent record and related 1:n records
+### Example: add a parent record and related 1:n records
 
 This Grist Python formula creates an order and then two rows in `Order_Lines`.
 The `Order` column in `Order_Lines` is a Reference to `Orders`:
@@ -212,7 +212,7 @@ The calls are deliberately sequential because the child rows need the id returne
 for the new parent. Consequently, this two-step operation is not atomic: if adding
 the child rows fails, the parent already exists.
 
-### Prompt for a value and update the current record
+### Example: prompt for a value and update the current record
 
 Use `prompt()` to request a value, `confirm()` for a yes/no question, and `alert()` to display a message:
 
@@ -319,7 +319,7 @@ buttons.append({
 return buttons
 ```
 
-### Extended helper example
+### Extended helper example FIXME
 
 This example builds add, remove, and bulk-update buttons with reusable helpers:
 
