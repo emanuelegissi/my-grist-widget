@@ -62,6 +62,7 @@ body {
 }
 
 .action-button:disabled {
-  cursor: default;
-  opacity: 0.55;
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
 }
