@@ -1,8 +1,8 @@
 {
   "name": "@emanuelegissi/widget-actionbuttons",
-  "description": "Configurable buttons that send user actions to the data engine.",
+  "description": "Configurable buttons that run Grist UserActions or JavaScript handlers.",
   "homePage": "https://github.com/emanuelegissi/my-grist-widget",
-  "version": "0.0.5",
+  "version": "0.0.7",
   "grist": {
     "name": "Action buttons",
     "url": "https://emanuelegissi.github.io/my-grist-widget/actionbuttons/index.html",
@@ -10,7 +10,7 @@
     "published": true,
     "accessLevel": "full",
     "renderAfterReady": true,
-    "description": "Show configurable buttons that send user actions to the data engine.",
+    "description": "Show configurable buttons that run Grist UserActions or JavaScript handlers.",
     "authors": [
       {
         "name": "Emanuele Gissi",

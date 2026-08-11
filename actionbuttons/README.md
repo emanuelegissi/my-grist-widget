@@ -8,15 +8,16 @@ Use it by inserting the following link as the custom widget URL:
 https://emanuelegissi.github.io/my-grist-widget/actionbuttons
 ```
 
-The widget requires full document access because its buttons apply Grist UserActions.
+The widget requires full document access because its buttons may apply Grist UserActions.
 
 ## Features
 
 - configuration from one mapped Grist column;
 - one button object or an array of buttons per record;
 - optional button descriptions, confirmations, and background colors;
-- disabled buttons when the action list is empty;
-- Grist UserActions submitted atomically in their configured order;
+- disabled buttons when `actions` is empty;
+- JavaScript button handlers, including asynchronous handlers;
+- direct Grist UserAction arrays submitted atomically in their configured order;
 - all buttons disabled while an action sequence is running;
 - cursor movement after adding, updating, or removing records;
 - removal navigation based on the widget's filtered and linked row context;
@@ -67,7 +68,7 @@ Supported properties:
 | Property | Required | Description |
 | --- | --- | --- |
 | `button` | Yes | Non-empty button label. |
-| `actions` | Yes | Array of Grist UserActions. An empty array disables the button. |
+| `actions` | Yes | Array of Grist UserActions, or a string containing JavaScript handler code. An empty array or blank string disables the button. |
 | `description` | No | Native tooltip shown through the button's `title`. |
 | `confirm` | No | A non-empty string displays a confirmation dialog before actions run. An empty string or `false` skips confirmation. Canceling performs no actions. |
 | `color` | No | CSS background color. |
@@ -116,6 +117,145 @@ own allowlist of Grist action names.
 For the full list of action names, see
 `grist-core/app/common/DocActions.ts` in the Grist source.
 
+## JavaScript handlers
+
+As an alternative to a UserAction array, `actions` may contain JavaScript code:
+
+```javascript
+{
+  button: "Approve",
+  actions: `
+    const tableId = await widget.getSelectedTableId();
+    const rowId = widget.requireCurrentRowId();
+
+    await widget.applyUserActions([
+      ["UpdateRecord", tableId, rowId, {Status: "Approved"}]
+    ]);
+  `
+}
+```
+
+The string is compiled as the body of a strict asynchronous function when the
+button configuration is rendered. This means that syntax errors are reported
+immediately and that the handler may use top-level `await` and `return`. It has
+access to the normal global `grist` API and to a frozen `widget` helper object:
+
+```javascript
+widget.getCurrentRecord();
+widget.getCurrentRowId();
+widget.getCurrentRecords();
+widget.getCurrentRowsId();
+widget.getSelectedTableId();
+widget.requireCurrentRowId();
+widget.sleep(500);
+widget.applyUserActions(userActions);
+widget.addNewRecord();
+widget.removeCurrentRecord();
+widget.openUrl(url);
+```
+
+- `getCurrentRecord()` returns the latest record received from `grist.onRecord()`,
+  or `null` when no existing row is selected.
+- `getCurrentRowId()` returns that record's id, or `null`.
+- `getCurrentRecords()` returns the latest records received from `grist.onRecords()`,
+  respecting the widget's filters and Select By context. It returns an empty array
+  until records have been received.
+- `getCurrentRowsId()` returns the existing row ids from `getCurrentRecords()`.
+- `requireCurrentRowId()` returns the id or throws a clear error when there is no
+  existing current row.
+- `getSelectedTableId()` returns a Promise for the table id selected by the widget.
+- `sleep(ms)` returns a Promise that resolves after the requested delay.
+- `applyUserActions(userActions)` validates and applies the same UserAction arrays
+  supported directly by `actions`. It preserves the widget's cursor behavior and
+  resolves to Grist's unmodified `applyUserActions()` result.
+- `addNewRecord()` and `removeCurrentRecord()` operate on the selected table, reuse
+  `applyUserActions()`, and resolve to its result.
+- `openUrl(url)` opens a new browser tab with `noopener,noreferrer`. Call it directly
+  from the click handler, before an `await`, to avoid browser popup blocking.
+
+JavaScript handlers run with this widget's full document access. They are not
+sandboxed from the widget page and can also use browser globals such as `fetch`,
+`alert`, `confirm`, and `prompt`. Only use handler strings written by people who
+are trusted with the document; anyone who can change the mapped cell or its
+formula can change the code that runs.
+
+### Add a parent record and related 1:n records
+
+This Grist Python formula creates an order and then two rows in `Order_Lines`.
+The `Order` column in `Order_Lines` is a Reference to `Orders`:
+
+```python
+return {
+  "button": "Create order",
+  "actions": """
+    const orderResult = await widget.applyUserActions([
+      ["AddRecord", "Orders", null, {Customer: "Example customer"}]
+    ]);
+    const orderId = orderResult?.retValues?.[0];
+
+    if (!Number.isFinite(orderId)) {
+      throw new Error("Grist did not return the new order id.");
+    }
+
+    await widget.applyUserActions([
+      ["BulkAddRecord", "Order_Lines", [null, null], {
+        Order: [orderId, orderId],
+        Product: ["Consulting", "Support"],
+        Quantity: [1, 2]
+      }]
+    ]);
+  """,
+}
+```
+
+The calls are deliberately sequential because the child rows need the id returned
+for the new parent. Consequently, this two-step operation is not atomic: if adding
+the child rows fails, the parent already exists.
+
+### Prompt for a value and update the current record
+
+Use `prompt()` to request a value, `confirm()` for a yes/no question, and `alert()` to display a message:
+
+```python
+return {
+  "button": "Set status",
+  "actions": """
+    const record = widget.getCurrentRecord();
+    const rowId = widget.requireCurrentRowId();
+    const status = prompt("New status:", record?.Status ?? "");
+
+    if (status === null) return;
+
+    const tableId = await widget.getSelectedTableId();
+    await widget.applyUserActions([
+      ["UpdateRecord", tableId, rowId, {Status: status}]
+    ]);
+  """,
+}
+```
+
+`prompt()` always returns a string or `null`; parse and validate it explicitly
+before updating numeric, date, or other non-text fields.
+
+### Errors in handlers
+
+No `try`/`catch` is needed by default. A synchronous error or rejected Promise
+that escapes from a handler is displayed in an alert, and all buttons are restored
+after the handler finishes:
+
+```javascript
+{
+  button: "Delete",
+  actions: `
+    if (!confirm("Delete the selected record?")) return;
+    await widget.removeCurrentRecord();
+  `
+}
+```
+
+Catch errors only when the handler can recover from them or needs to add context.
+Rethrow after adding context if the widget should still display the failure.
+
 ## Validation and errors
 
 The widget displays an alert when:
@@ -126,10 +266,13 @@ The widget displays an alert when:
 - a button is missing `button` or `actions`, or a property has an invalid type;
 - an action is not an array, has fewer than two items, or does not start with a
   string action name;
+- a JavaScript handler has invalid syntax;
 - Grist rejects an action during execution.
 
-Configuration errors clear the currently displayed buttons. Runtime action errors
-leave the data unchanged because the complete list is submitted atomically.
+Configuration errors clear the currently displayed buttons. Runtime errors from a
+direct UserAction array leave the data unchanged because the complete list is
+submitted atomically. A JavaScript handler may make several separate calls, so
+earlier successful calls are not rolled back if a later one fails.
 
 ## Cursor behavior
 

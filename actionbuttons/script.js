@@ -3,6 +3,10 @@
 const buttonRow = document.getElementById("buttonRow");
 let buttons = [];
 let busy = false;
+let currentRecord = null;
+let currentRecords = [];
+
+const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 
 function getErrorMessage(error) {
   return error instanceof Error
@@ -137,6 +141,10 @@ async function applyUserActions(actions) {
 }
 
 async function runActions(actions) {
+  if (!Array.isArray(actions)) {
+    throw new Error(`Actions must be an array of Grist UserAction tuples.`);
+  }
+
   for (const action of actions) {
     if (!isUserAction(action)) {
       throw new Error(
@@ -145,7 +153,76 @@ async function runActions(actions) {
     }
   }
 
-  await applyUserActions(actions);
+  return await applyUserActions(actions);
+}
+
+const widget = Object.freeze({
+  getCurrentRecord() {
+    return currentRecord;
+  },
+
+  getCurrentRowId() {
+    return currentRecord?.id ?? null;
+  },
+
+  getCurrentRecords() {
+    return currentRecords;
+  },
+
+  getCurrentRowsId() {
+    return currentRecords
+      .map((record) => record?.id)
+      .filter((rowId) => rowId != null && rowId !== "new");
+  },
+
+  getSelectedTableId,
+
+  requireCurrentRowId() {
+    const rowId = widget.getCurrentRowId();
+    if (rowId == null || rowId === "new") {
+      throw new Error("Select an existing record first.");
+    }
+    return rowId;
+  },
+
+  sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  },
+
+  applyUserActions(userActions) {
+    return runActions(userActions);
+  },
+
+  async addNewRecord() {
+    const tableId = await widget.getSelectedTableId();
+    return await widget.applyUserActions([
+      ["AddRecord", tableId, null, {}],
+    ]);
+  },
+
+  async removeCurrentRecord() {
+    const rowId = widget.requireCurrentRowId();
+    const tableId = await widget.getSelectedTableId();
+    return await widget.applyUserActions([
+      ["RemoveRecord", tableId, rowId],
+    ]);
+  },
+
+  openUrl(url) {
+    return window.open(url, "_blank", "noopener,noreferrer");
+  },
+});
+
+function compileActionHandler(source, label) {
+  try {
+    return new AsyncFunction(
+      "grist",
+      "widget",
+      `"use strict";\n${source}\n//# sourceURL=actionbuttons-handler.js`
+    );
+  } catch (error) {
+    throw new Error(`Button "${label}" has invalid JavaScript: ${getErrorMessage(error)}`);
+  }
 }
 
 async function onClickButton(model) {
@@ -154,7 +231,8 @@ async function onClickButton(model) {
 
   setBusy(true);
   try {
-    await runActions(model.actions);
+    const handler = model.handler;
+    await handler(grist, widget);
   } catch (e) {
     fail(e);
   } finally {
@@ -170,8 +248,10 @@ function buildButtons(cellValue) {
       throw new Error(`Each button must have a non-empty string key "button".`);
     }
 
-    if (!Array.isArray(b.actions)) {
-      throw new Error(`Button "${b.button}" must have key "actions" as an array.`);
+    if (!Array.isArray(b.actions) && typeof b.actions !== "string") {
+      throw new Error(
+        `Button "${b.button}" must have key "actions" as an array or a JavaScript string.`
+      );
     }
 
     if (b.description != null && typeof b.description !== "string") {
@@ -186,22 +266,32 @@ function buildButtons(cellValue) {
       throw new Error(`Button "${b.button}": optional "color" must be a string.`);
     }
 
-    for (const a of b.actions) {
-      if (!isUserAction(a)) {
-        throw new Error(
-          `Button "${b.button}" has an invalid action item. ` +
-          `Expected a Grist UserAction tuple ["Action","Table",...].`
-        );
+    if (Array.isArray(b.actions)) {
+      for (const a of b.actions) {
+        if (!isUserAction(a)) {
+          throw new Error(
+            `Button "${b.button}" has an invalid action item. ` +
+            `Expected a Grist UserAction tuple ["Action","Table",...].`
+          );
+        }
       }
     }
+
+    const disabled = b.actions.length === 0 ||
+      (typeof b.actions === "string" && !b.actions.trim());
+    const handler = disabled
+      ? null
+      : Array.isArray(b.actions)
+        ? () => runActions(b.actions)
+        : compileActionHandler(b.actions, b.button);
 
     return {
       label: b.button,
       description: b.description ?? "",
       confirm: b.confirm ?? false,
       color: b.color ?? "",
-      disabled: b.actions.length === 0,
-      actions: b.actions,
+      disabled,
+      handler,
     };
   });
 }
@@ -240,6 +330,8 @@ function setBusy(nextBusy) {
 }
 
 function onRecord(record, mappings) {
+  currentRecord = record && typeof record === "object" ? record : null;
+
   try {
     const colId = mappings?.actionCol;
     if (!colId) throw new Error(`Missing column mapping in widget settings (actionCol).`);
@@ -261,10 +353,14 @@ function onRecord(record, mappings) {
 }
 
 function onNewRecord() {
+  currentRecord = null;
   setButtons([]);
 }
 
 grist.onRecord(onRecord);
+grist.onRecords((records) => {
+  currentRecords = Array.isArray(records) ? records : [];
+});
 grist.onNewRecord(onNewRecord);
 
 grist.ready({
@@ -279,7 +375,7 @@ grist.ready({
       description:
         "Null, a button object, or an array of button objects. " +
         'Button: {button, actions, description?, confirm?, color?}. ' +
-        "Actions: Grist UserAction tuples.",
+        "Actions: Grist UserAction tuples or JavaScript code.",
       allowMultiple: false,
     },
   ],
