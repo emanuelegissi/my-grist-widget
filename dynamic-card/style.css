@@ -1,0 +1,330 @@
+:root {
+  color-scheme: light dark;
+  --background: var(--grist-theme-widget-bg, #ffffff);
+  --text: var(--grist-theme-text, #262633);
+  --muted: var(--grist-theme-secondary, #78787f);
+  --label: var(--grist-theme-card-form-label, var(--muted));
+  --control-background: var(--grist-theme-input-bg, #ffffff);
+  --control-text: var(--grist-theme-input-fg, #262633);
+  --border: var(--grist-theme-input-border, #d9d9d9);
+  --focus: var(--grist-theme-primary, #16b378);
+  --danger: var(--grist-theme-error-text, #d0021b);
+  --danger-background: var(--grist-theme-error-bg, #fff2f2);
+  --disabled-background: var(--grist-theme-bg-secondary, #f7f7f7);
+  --choice-background: var(--grist-theme-token-choice-bg, #e8f1ff);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: var(--background);
+  color: var(--text);
+  font-family: var(
+    --grist-theme-font-family,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif
+  );
+  font-size: var(--grist-theme-medium-font-size, 13px);
+}
+
+body {
+  overflow: hidden;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+#app {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+}
+
+.card,
+.message,
+.alert {
+  width: 100%;
+  min-height: 100%;
+  padding: 14px 20px 24px;
+}
+
+.message {
+  color: var(--muted);
+}
+
+.alert {
+  color: var(--danger);
+}
+
+.alert-panel {
+  padding: 12px;
+  border: 1px solid var(--danger);
+  border-radius: 3px;
+  background: var(--danger-background);
+}
+
+.alert-title {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.alert p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.field {
+  margin-bottom: 11px;
+}
+
+.field-label {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 17px;
+  gap: 5px;
+  color: var(--label);
+  font-size: var(--grist-theme-small-font-size, 11px);
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.field-label-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.field-id,
+.read-only {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.info {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--muted);
+  color: var(--background);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 13px;
+  cursor: help;
+}
+
+.info:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.control,
+.choice-list {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--control-background);
+  color: var(--control-text);
+  box-shadow: none;
+}
+
+input.control,
+select.control {
+  height: 27px;
+  padding: 2px 6px;
+}
+
+textarea.control {
+  min-height: 72px;
+  padding: 5px 6px;
+  line-height: 1.4;
+  resize: vertical;
+}
+
+.control:focus,
+.choice-list:focus-within {
+  outline: none;
+  border-color: var(--focus);
+  box-shadow: inset 0 0 0 1px var(--focus);
+}
+
+.control:disabled,
+.choice-list.disabled {
+  background: var(--disabled-background);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.control[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
+input[type="number"].control {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+input[type="number"].control::-webkit-inner-spin-button,
+input[type="number"].control::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
+.toggle-control {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 27px;
+  cursor: pointer;
+}
+
+.toggle-control input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.toggle-track {
+  position: relative;
+  width: 30px;
+  height: 17px;
+  border: 1px solid var(--muted);
+  border-radius: 10px;
+  background: var(--disabled-background);
+  transition: background 100ms ease;
+}
+
+.toggle-track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: transform 100ms ease;
+}
+
+.toggle-control input:checked + .toggle-track {
+  border-color: var(--focus);
+  background: var(--focus);
+}
+
+.toggle-control input:checked + .toggle-track::after {
+  background: var(--background);
+  transform: translateX(13px);
+}
+
+.toggle-control input:focus-visible + .toggle-track {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.toggle-control input:disabled + .toggle-track {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.choice-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-height: 31px;
+  padding: 4px;
+}
+
+.choice-option {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+}
+
+.choice-option input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.choice-chip {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--control-background);
+  color: var(--control-text);
+  line-height: 17px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.choice-option input:checked + .choice-chip {
+  border-color: var(--focus);
+  background: var(--choice-background);
+}
+
+.choice-option input:focus-visible + .choice-chip {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.choice-option input:disabled + .choice-chip {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.empty-choice-list {
+  padding: 2px;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.status {
+  min-height: 17px;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: var(--grist-theme-small-font-size, 11px);
+  line-height: 17px;
+}
+
+.status.error {
+  color: var(--danger);
+}
+
+@media (max-width: 240px) {
+  .card,
+  .message,
+  .alert {
+    padding-right: 9px;
+    padding-left: 9px;
+  }
+}

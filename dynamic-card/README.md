@@ -1,572 +1,132 @@
 # Dynamic Card Grist Custom Widget
 
-A vanilla JavaScript Grist custom widget that displays a dynamic card with editable fields.
-The card layout follows the visual structure of a standard Grist Card widget: compact labels, stacked fields, small help icons, and immediate editing.
-
-The widget reads a JSON card definition from a mapped text column and stores the edited values as JSON in another mapped text column.
+Dynamic Card is a framework-free Grist custom widget that turns a per-record list of column names into an editable card. Each record may therefore show a different subset of the linked table while all values remain in their original Grist columns.
 
 ## Features
 
-* Dynamic card layout based on JSON configuration.
-* Grist Card-like look and feel.
-* Immediate autosave after editing.
-* No Save or Revert buttons.
-* Data saved as formatted JSON.
-* Field-level help using the native browser `title` tooltip on the round `i` icon.
-* Supported field types:
+- Builds the card from a mapped Grist Choice List or a JSON array.
+- Accepts column IDs and unique column labels.
+- Uses each column's Grist label, description, type, formula state, and configured choices.
+- Supports Text, multiline Text, Numeric, Int, Bool, Date, DateTime, Choice, and Choice List columns.
+- Saves edits automatically without a Save button.
+- Renders formula columns as read-only.
+- Uses Grist theme variables and adapts to narrow widget sizes.
+- Shows configuration problems in an accessible alert panel.
 
-  * `text`
-  * `integer`
-  * `numeric`
-  * `toggle`
-  * `choice`
-* Optional autocomplete for text-like fields.
-* Choice fields with simple or labelled options.
-* Preserves existing JSON keys that are not currently visible in the card.
-* Vanilla JavaScript only. No Vue, React, or external framework.
+## Grist setup
 
-## Required Grist columns
+1. Add a column that defines which fields to show. A Choice List column is the most convenient option; a Text column containing JSON also works.
+2. Add Dynamic Card to the page and select the table containing that column.
+3. Link the widget to a record-selection widget if it should follow a selected row.
+4. In the widget configuration, map the definition column to **Fields**.
+5. Grant **Full document access** when Grist asks for permission.
 
-The linked Grist table must include two text columns.
+The widget edits existing records only. Selecting Grist's blank new-record row displays an empty-state message.
 
-| Column        | Type | Purpose                                  |
-| ------------- | ---: | ---------------------------------------- |
-| `DynCardDef`  | Text | JSON definition of the dynamic card.     |
-| `DynCardData` | Text | JSON data collected by the dynamic card. |
+## Fields column format
 
-The widget uses Grist column mapping, so the actual table columns may have different names, but they must be mapped to:
+The mapped **Fields** value must be either:
 
-* `DynCardDef`
-* `DynCardData`
+- a Grist Choice List whose choices are column IDs or labels; or
+- a JSON array stored in a Text column.
 
-## Widget permissions
-
-The widget requires full access because it writes edited data back to the linked Grist table.
-
-```javascript
-grist.ready({
-  requiredAccess: "full",
-  columns: COLUMN_DEFS
-});
-```
-
-## Basic usage
-
-1. Add the `index.html` and `widget.js` files to your custom widget.
-2. Add the custom widget to a Grist page.
-3. Select the table that contains the records.
-4. Map the dynamic card definition column to `DynCardDef`.
-5. Map the dynamic card data column to `DynCardData`.
-6. Select a record.
-7. Edit values directly in the dynamic card.
-8. The widget automatically saves the data to `DynCardData`.
-
-## Example `DynCardDef`
+Example JSON value:
 
 ```json
-{
-  "title": "Dettaglio prestazione",
-  "help": "Compila i dati della prestazione.",
-  "fields": [
-    {
-      "key": "comune_partenza",
-      "label": "Comune partenza",
-      "type": "text",
-      "help": "Comune di partenza della prestazione.",
-      "autocomplete": [
-        "Sassari",
-        "Alghero",
-        "Olbia",
-        "Tempio Pausania",
-        "Porto Torres"
-      ]
-    },
-    {
-      "key": "comune_arrivo",
-      "label": "Comune arrivo",
-      "type": "text",
-      "help": "Comune di arrivo della prestazione.",
-      "autocomplete": [
-        "Sassari",
-        "Alghero",
-        "Olbia",
-        "Tempio Pausania",
-        "Porto Torres"
-      ]
-    },
-    {
-      "key": "mezzo_proprio",
-      "label": "Mezzo proprio",
-      "type": "toggle",
-      "help": "Indica se è stato utilizzato il mezzo proprio."
-    },
-    {
-      "key": "tipo_veicolo",
-      "label": "Tipo veicolo",
-      "type": "choice",
-      "help": "Seleziona la tipologia di veicolo.",
-      "choices": [
-        "APS",
-        "ABP",
-        "CA",
-        "AF"
-      ]
-    },
-    {
-      "key": "km",
-      "label": "Chilometri",
-      "type": "integer",
-      "min": 0,
-      "step": 1,
-      "unit": "km",
-      "help": "Distanza percorsa.",
-      "autocomplete": [
-        10,
-        25,
-        50,
-        100
-      ]
-    },
-    {
-      "key": "importo",
-      "label": "Importo",
-      "type": "numeric",
-      "min": 0,
-      "step": 0.01,
-      "unit": "€",
-      "help": "Importo in euro."
-    },
-    {
-      "key": "nota",
-      "label": "Nota",
-      "type": "text",
-      "multiline": true,
-      "help": "Eventuali note aggiuntive."
-    }
-  ]
-}
+["Name", "Surname", "Age", "Gender", "Weight", "Birthdate"]
 ```
 
-## Example saved `DynCardData`
+The order in the array is the order used in the card.
 
-After editing the card, the widget stores data like this:
+### Column IDs and labels
 
-```json
-{
-  "comune_partenza": "Sassari",
-  "comune_arrivo": "Olbia",
-  "mezzo_proprio": true,
-  "tipo_veicolo": "APS",
-  "km": 100,
-  "importo": 35.75,
-  "nota": "Viaggio effettuato con mezzo proprio."
-}
-```
+A listed name is resolved in this order:
 
-## Dynamic card definition format
+1. exact Grist column ID;
+2. exact, unique column label.
 
-A `DynCardDef` value must be a JSON object.
+Column IDs are recommended because labels can be changed and two columns may share the same label. If a label is ambiguous, the widget asks for a column ID instead.
 
-```json
-{
-  "title": "Card title",
-  "help": "Optional card-level help text.",
-  "fields": []
-}
-```
-
-### Top-level properties
-
-| Property |   Type | Required | Description                                          |
-| -------- | -----: | -------: | ---------------------------------------------------- |
-| `title`  | string |       No | Optional card title.                                 |
-| `help`   | string |       No | Optional help text shown on the card title `i` icon. |
-| `fields` |  array |      Yes | List of field definitions. Must not be empty.        |
-
-## Field definition format
-
-Each field must be an object inside the `fields` array.
-
-```json
-{
-  "key": "field_key",
-  "label": "Field label",
-  "type": "text"
-}
-```
-
-### Common field properties
-
-| Property      |   Type | Required | Description                                                           |
-| ------------- | -----: | -------: | --------------------------------------------------------------------- |
-| `key`         | string |      Yes | JSON key used in `DynCardData`. Must be unique.                       |
-| `label`       | string |       No | Label shown above the field. Defaults to `key`.                       |
-| `type`        | string |       No | Field type. Defaults to `text`.                                       |
-| `help`        | string |       No | Help text shown through the field `i` icon.                           |
-| `placeholder` | string |       No | Placeholder text for text-like fields or empty choice option.         |
-| `default`     |    any |       No | Default value shown when the key is missing or null in `DynCardData`. |
-| `unit`        | string |       No | Unit displayed after the field, for example `km`, `€`, or `m²`.       |
+Every listed column must exist and be available to the linked widget. Blank lists, invalid JSON, non-string entries, duplicate names, missing fields, ambiguous labels, and unsupported column types produce a configuration alert.
 
 ## Supported field types
 
-### `text`
+| Grist type | Card control | Empty value |
+| --- | --- | --- |
+| Text | Single-line text input | Empty string |
+| Text with the `TextBox` widget option | Resizable multiline input | Empty string |
+| Numeric | Decimal number input | `null` |
+| Int | Integer input | `null` |
+| Bool | Toggle | `false` |
+| Date | Date input | `null` |
+| DateTime | Local date-and-time input | `null` |
+| Choice | Drop-down using the column's configured choices | Empty string |
+| ChoiceList | Multi-select choice chips | `null` when no choice is selected |
 
-A single-line text field.
+Choice colors are managed by Grist and are not reproduced by this widget. If a current Choice or Choice List value is absent from the column's configured choices, it is still included so that existing data remains visible.
 
-```json
-{
-  "key": "comune",
-  "label": "Comune",
-  "type": "text"
-}
-```
-
-### Multiline `text`
-
-A multiline text field using `textarea`.
-
-```json
-{
-  "key": "nota",
-  "label": "Nota",
-  "type": "text",
-  "multiline": true
-}
-```
-
-### `integer`
-
-An integer numeric field.
-
-```json
-{
-  "key": "km",
-  "label": "Chilometri",
-  "type": "integer",
-  "min": 0,
-  "max": 500,
-  "step": 1,
-  "unit": "km"
-}
-```
-
-Empty integer fields are saved as `null`.
-
-The old field type `"number"` is not supported. Use `"integer"` instead.
-
-### `numeric`
-
-A decimal numeric field.
-
-```json
-{
-  "key": "importo",
-  "label": "Importo",
-  "type": "numeric",
-  "min": 0,
-  "step": 0.01,
-  "unit": "€"
-}
-```
-
-Empty numeric fields are saved as `null`.
-
-### `toggle`
-
-A boolean checkbox field.
-
-```json
-{
-  "key": "mezzo_proprio",
-  "label": "Mezzo proprio",
-  "type": "toggle"
-}
-```
-
-Toggle fields are saved as:
-
-```json
-true
-```
-
-or:
-
-```json
-false
-```
-
-### `choice`
-
-A select/dropdown field.
-
-```json
-{
-  "key": "tipo_veicolo",
-  "label": "Tipo veicolo",
-  "type": "choice",
-  "choices": [
-    "APS",
-    "ABP",
-    "CA",
-    "AF"
-  ]
-}
-```
-
-The selected value is saved as a string.
-
-If no value is selected, the field is saved as `null`.
-
-## Labelled choices
-
-Choice fields may also use objects with separate `value` and `label`.
-
-```json
-{
-  "key": "esito",
-  "label": "Esito",
-  "type": "choice",
-  "choices": [
-    {
-      "value": "ok",
-      "label": "Regolare"
-    },
-    {
-      "value": "warning",
-      "label": "Con osservazioni"
-    },
-    {
-      "value": "ko",
-      "label": "Non regolare"
-    }
-  ]
-}
-```
-
-This saves only the `value`:
-
-```json
-{
-  "esito": "warning"
-}
-```
-
-## Autocomplete
-
-Fields may define an `autocomplete` array.
-
-```json
-{
-  "key": "comune_partenza",
-  "label": "Comune partenza",
-  "type": "text",
-  "autocomplete": [
-    "Sassari",
-    "Alghero",
-    "Olbia",
-    "Tempio Pausania",
-    "Porto Torres"
-  ]
-}
-```
-
-Autocomplete works with text-like inputs:
-
-* `text`
-* multiline `text`
-* `integer`
-* `numeric`
-
-For `integer` and `numeric` fields, autocomplete values may be numbers:
-
-```json
-{
-  "key": "km",
-  "label": "Chilometri",
-  "type": "integer",
-  "autocomplete": [
-    10,
-    25,
-    50,
-    100
-  ]
-}
-```
-
-Autocomplete values may be strings, numbers, or booleans. They are internally converted to strings for matching and display.
-
-Choice fields do not use `autocomplete`; they use `choices`.
+Formula columns of these types are displayed but disabled, because their values are calculated by Grist.
 
 ## Autosave behavior
 
-The widget saves data automatically.
+There is no Save or Revert button.
 
-For text-like fields:
+- Typing in Text, Numeric, and Int controls schedules a save after 350 ms.
+- Changing or leaving those controls saves immediately.
+- Toggle, Date, DateTime, Choice, and Choice List changes save immediately.
+- Pending typed edits are flushed before the selected record changes.
+- Grist update events reconcile inactive controls without replacing the control currently being edited.
 
-* typing schedules autosave;
-* leaving the field saves immediately;
-* changing the field saves immediately.
+A status line reports unsaved changes, saving, success, and failures. Invalid integers and numeric values remain in the control and are not sent to Grist.
 
-For toggle and choice fields:
+## Permissions and data handling
 
-* changes are saved immediately.
+Dynamic Card requests `requiredAccess: "full"` because it:
 
-The autosave delay is controlled by:
+- reads the selected table's column metadata; and
+- calls `grist.selectedTable.update()` to write edited values directly to their source columns.
 
-```javascript
-const AUTOSAVE_DELAY_MS = 300;
-```
+The widget does not send table data to another service. Its only external dependency is Grist's official `grist-plugin-api.js`, loaded by `index.html`.
 
-## Data preservation
+Updates are scoped to one field of the selected record. The definition column is only modified if it is itself included in its own Fields list and edited in the card.
 
-When saving, the widget updates only the keys visible in the current dynamic card and preserves any existing keys already stored in `DynCardData`.
+## Date and Choice List values
 
-For example, if `DynCardData` contains:
+The Grist Custom Widget API supplies Date and DateTime values as Unix timestamps in seconds. Dynamic Card converts them for native browser inputs and converts edited values back to seconds before saving. A DateTime control follows the browser's local timezone; Grist stores the resulting instant in UTC and applies the column timezone when displaying it elsewhere.
 
-```json
-{
-  "a": "old",
-  "b": "hidden"
-}
-```
+Choice List values received by the widget are normal JavaScript arrays. When saving, Dynamic Card uses Grist's typed list representation, `['L', ...choices]`.
 
-and the current `DynCardDef` only shows field `a`, saving the card will preserve `b`.
+## Troubleshooting
 
-This is useful when different record types use different dynamic card definitions.
+### “Map a table column to Fields”
 
-## Dynamic definitions by record type
+Open the widget configuration and map the column that contains the dynamic field list.
 
-`DynCardDef` can be a Grist formula column.
+### “Field ... does not exist”
 
-For example, a Grist formula may return a different JSON definition depending on a `$Type` column.
+Check spelling and prefer the stable column ID. Also confirm that the column is available to the widget's linked table/view and permitted by any access rules.
 
-Conceptually:
+### “Unsupported Grist type”
 
-```python
-if $Type == "Trasferta":
-  return """{
-    "title": "Trasferta",
-    "fields": [
-      {
-        "key": "comune_partenza",
-        "label": "Comune partenza",
-        "type": "text"
-      },
-      {
-        "key": "km",
-        "label": "Chilometri",
-        "type": "integer"
-      }
-    ]
-  }"""
-else:
-  return """{
-    "title": "Dati generali",
-    "fields": [
-      {
-        "key": "nota",
-        "label": "Nota",
-        "type": "text",
-        "multiline": true
-      }
-    ]
-  }"""
-```
+The list includes a type outside the supported set, such as Ref, RefList, Attachments, or Any. Remove it from the list or store a display/edit value in a supported column.
 
-## Validation rules
+### Choices are missing
 
-The widget validates the dynamic card definition before rendering it.
+Configure choices on the underlying Grist Choice or Choice List column. Dynamic Card reads them from that column's widget options.
 
-The following conditions produce configuration errors:
+### A value is read-only
 
-* `DynCardDef` is empty.
-* `DynCardDef` is not valid JSON.
-* `DynCardDef` is not a JSON object.
-* `fields` is missing or empty.
-* a field is missing `key`.
-* two fields use the same `key`.
-* a field key is unsafe, for example `__proto__`, `prototype`, or `constructor`.
-* a field uses an unsupported `type`.
-* a `choice` field has no `choices` array.
-* autocomplete is not an array.
-* numeric constraints such as `min` or `max` are not valid numbers.
+Formula columns cannot be edited directly. Change the source fields used by the formula or convert the column to a data column in Grist.
 
-## Supported field types summary
-
-| Type      | Stored value | Empty value | Notes                                |
-| --------- | -----------: | ----------: | ------------------------------------ |
-| `text`    |       string |        `""` | Supports multiline and autocomplete. |
-| `integer` |       number |      `null` | Must be an integer.                  |
-| `numeric` |       number |      `null` | Allows decimal values.               |
-| `toggle`  |      boolean |     `false` | Checkbox field.                      |
-| `choice`  |       string |      `null` | Uses `choices`.                      |
-
-## Unsupported field types
-
-The widget does not support the old field type:
-
-```json
-{
-  "type": "number"
-}
-```
-
-Use this instead:
-
-```json
-{
-  "type": "integer"
-}
-```
-
-or, for decimal values:
-
-```json
-{
-  "type": "numeric"
-}
-```
-
-## File structure
+## Files
 
 ```text
-dynamic-card-widget/
-├── index.html
-└── widget.js
+dynamic-card/
+├── index.html    # Widget entry point and Grist API loader
+├── script.js     # Rendering, validation, metadata, and autosave logic
+├── style.css     # Grist-themed card controls and states
+├── package.json  # Widget manifest metadata
+└── README.md     # Setup and behavior documentation
 ```
 
-## `DynCardDef` vs `DynCardData`
-
-`DynCardDef` describes the card.
-
-```json
-{
-  "title": "Example",
-  "fields": [
-    {
-      "key": "name",
-      "label": "Name",
-      "type": "text"
-    }
-  ]
-}
-```
-
-`DynCardData` stores the values.
-
-```json
-{
-  "name": "Mario Rossi"
-}
-```
-
-## Notes
-
-* The widget is designed for a linked selected record.
-* It does not create new records.
-* It does not edit columns directly, except for the mapped `DynCardData` column.
-* The visible card is rebuilt when the selected Grist record changes.
-* While editing, the widget tries to avoid unnecessary re-rendering after its own autosave update.
-* Help text uses the native browser tooltip through the `title` attribute.
-* The widget is intentionally framework-free and uses only vanilla JavaScript.
-
+The implementation uses only HTML, CSS, and vanilla JavaScript.

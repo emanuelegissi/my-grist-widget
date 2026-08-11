@@ -10,7 +10,7 @@
     "published": true,
     "accessLevel": "full",
     "renderAfterReady": true,
-    "description": "Displays a dynamic card with editable fields.",
+    "description": "Displays a dynamic card, where only relevant fields are shown.",
     "authors": [
       {
         "name": "Emanuele Gissi",
