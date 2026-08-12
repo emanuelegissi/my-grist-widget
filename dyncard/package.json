@@ -1,0 +1,22 @@
+{
+  "name": "@emanuelegissi/dynamic-card",
+  "description": "Dynamic card.",
+  "homePage": "https://github.com/emanuelegissi/my-grist-widget",
+  "version": "0.0.1",
+  "grist": {
+    "name": "Dyncard",
+    "url": "https://emanuelegissi.github.io/my-grist-widget/dyncard/index.html",
+    "widgetId": "@emanuelegissi/dyncard",
+    "published": true,
+    "accessLevel": "full",
+    "renderAfterReady": true,
+    "description": "Displays a dynamic card, where only relevant fields are shown.",
+    "authors": [
+      {
+        "name": "Emanuele Gissi",
+        "url": "https://github.com/emanuelegissi"
+      }
+    ],
+    "isGristLabsMaintained": false
+  }
+}
