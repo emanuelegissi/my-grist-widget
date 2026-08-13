@@ -1,14 +1,26 @@
 "use strict";
 
+/*
+ * Browser ports in this file are based on grist-core commit
+ * 81682d2dcaf7ad8c1fbd662ee020e0d776df70b6 (Apache-2.0), in particular:
+ *   app/common/NumberFormat.ts
+ *   app/common/NumberParse.ts
+ *   app/common/Styles.ts
+ *   app/common/ValueFormatter.ts
+ *   app/client/widgets/FieldBuilder.ts
+ *   app/client/widgets/NumericEditor.ts
+ *   app/client/widgets/UserType.ts
+ *
+ * Grist's editor classes cannot run in a custom-widget iframe: they depend on
+ * the private document model, commands, GrainJS, and Grist's build pipeline.
+ * The formatting/parsing behavior is therefore ported below to browser APIs.
+ * The currency lookup is embedded from locale-currency 0.0.2 (BSD-2-Clause),
+ * the version pinned by this grist-core commit, so startup does not depend on
+ * a cross-origin ES-module import.
+ */
+
 const AUTOSAVE_DELAY_MS = 350;
 const FIELDS_MAPPING = "Fields";
-const TWO_DIGIT_YEAR_THRESHOLD = 10;
-const AVAILABLE_DATEPICKER_LOCALES = new Set(
-  ("ar-tn ar az bg bm bn br bs ca cs cy da de el en-AU en-CA en-GB en-IE en-NZ en-ZA " +
-  "eo es et eu fa fi fo fr-CH fr gl he hi hr hu hy id is it-CH it ja ka kh kk km ko kr " +
-  "lt lv me mk mn ms nl-BE nl no oc pl pt-BR pt ro rs-latin rs ru si sk sl sq sr-latin " +
-  "sr sv sw ta tg th tk tr uk uz-cyrl uz-latn vi zh-CN zh-TW").split(/\s+/)
-);
 const SUPPORTED_TYPES = new Set([
   "Text",
   "Numeric",
@@ -29,42 +41,81 @@ const DEFAULT_ALIGNMENTS = Object.freeze({
   Choice: "left",
   ChoiceList: "left"
 });
-const REGION_CURRENCIES = Object.freeze({
-  AU: "AUD", BR: "BRL", CA: "CAD", CH: "CHF", CN: "CNY", CZ: "CZK",
-  DK: "DKK", GB: "GBP", HK: "HKD", HU: "HUF", ID: "IDR", IL: "ILS",
-  IN: "INR", IS: "ISK", JP: "JPY", KR: "KRW", MX: "MXN", MY: "MYR",
-  NO: "NOK", NZ: "NZD", PL: "PLN", RO: "RON", RU: "RUB", SE: "SEK",
-  SG: "SGD", TH: "THB", TR: "TRY", TW: "TWD", UA: "UAH", US: "USD",
-  ZA: "ZAR"
+const NUMBER_MODES = ["currency", "decimal", "percent", "scientific"];
+const FONT_STYLE_CLASSES = Object.freeze({
+  fontBold: "font-bold",
+  fontItalic: "font-italic",
+  fontUnderline: "font-underline",
+  fontStrikethrough: "font-strikethrough"
+});
+const LOCALE_CURRENCIES = Object.freeze({
+  AD: "EUR", AE: "AED", AF: "AFN", AG: "XCD", AI: "XCD", AL: "ALL", AM: "AMD",
+  AN: "ANG", AO: "AOA", AR: "ARS", AS: "USD", AT: "EUR", AU: "AUD", AW: "AWG",
+  AX: "EUR", AZ: "AZN", BA: "BAM", BB: "BBD", BD: "BDT", BE: "EUR", BF: "XOF",
+  BG: "BGN", BH: "BHD", BI: "BIF", BJ: "XOF", BL: "EUR", BM: "BMD", BN: "BND",
+  BO: "BOB", BQ: "USD", BR: "BRL", BS: "BSD", BT: "BTN", BV: "NOK", BW: "BWP",
+  BY: "BYR", BZ: "BZD", CA: "CAD", CC: "AUD", CD: "CDF", CF: "XAF", CG: "XAF",
+  CH: "CHF", CI: "XOF", CK: "NZD", CL: "CLP", CM: "XAF", CN: "CNY", CO: "COP",
+  CR: "CRC", CU: "CUP", CV: "CVE", CW: "ANG", CX: "AUD", CY: "EUR", CZ: "CZK",
+  DE: "EUR", DJ: "DJF", DK: "DKK", DM: "XCD", DO: "DOP", DZ: "DZD", EC: "USD",
+  EE: "EUR", EG: "EGP", EH: "MAD", ER: "ERN", ES: "EUR", ET: "ETB", FI: "EUR",
+  FJ: "FJD", FK: "FKP", FM: "USD", FO: "DKK", FR: "EUR", GA: "XAF", GB: "GBP",
+  GD: "XCD", GE: "GEL", GF: "EUR", GG: "GBP", GH: "GHS", GI: "GIP", GL: "DKK",
+  GM: "GMD", GN: "GNF", GP: "EUR", GQ: "XAF", GR: "EUR", GS: "GBP", GT: "GTQ",
+  GU: "USD", GW: "XOF", GY: "GYD", HK: "HKD", HM: "AUD", HN: "HNL", HR: "HRK",
+  HT: "HTG", HU: "HUF", ID: "IDR", IE: "EUR", IL: "ILS", IM: "GBP", IN: "INR",
+  IO: "USD", IQ: "IQD", IR: "IRR", IS: "ISK", IT: "EUR", JE: "GBP", JM: "JMD",
+  JO: "JOD", JP: "JPY", KE: "KES", KG: "KGS", KH: "KHR", KI: "AUD", KM: "KMF",
+  KN: "XCD", KP: "KPW", KR: "KRW", KW: "KWD", KY: "KYD", KZ: "KZT", LA: "LAK",
+  LB: "LBP", LC: "XCD", LI: "CHF", LK: "LKR", LR: "LRD", LS: "LSL", LT: "LTL",
+  LU: "EUR", LV: "LVL", LY: "LYD", MA: "MAD", MC: "EUR", MD: "MDL", ME: "EUR",
+  MF: "EUR", MG: "MGA", MH: "USD", MK: "MKD", ML: "XOF", MM: "MMK", MN: "MNT",
+  MO: "MOP", MP: "USD", MQ: "EUR", MR: "MRO", MS: "XCD", MT: "EUR", MU: "MUR",
+  MV: "MVR", MW: "MWK", MX: "MXN", MY: "MYR", MZ: "MZN", NA: "NAD", NC: "XPF",
+  NE: "XOF", NF: "AUD", NG: "NGN", NI: "NIO", NL: "EUR", NO: "NOK", NP: "NPR",
+  NR: "AUD", NU: "NZD", NZ: "NZD", OM: "OMR", PA: "PAB", PE: "PEN", PF: "XPF",
+  PG: "PGK", PH: "PHP", PK: "PKR", PL: "PLN", PM: "EUR", PN: "NZD", PR: "USD",
+  PS: "ILS", PT: "EUR", PW: "USD", PY: "PYG", QA: "QAR", RE: "EUR", RO: "RON",
+  RS: "RSD", RU: "RUB", RW: "RWF", SA: "SAR", SB: "SBD", SC: "SCR", SD: "SDG",
+  SE: "SEK", SG: "SGD", SH: "SHP", SI: "EUR", SJ: "NOK", SK: "EUR", SL: "SLL",
+  SM: "EUR", SN: "XOF", SO: "SOS", SR: "SRD", ST: "STD", SV: "SVC", SX: "ANG",
+  SY: "SYP", SZ: "SZL", TC: "USD", TD: "XAF", TF: "EUR", TG: "XOF", TH: "THB",
+  TJ: "TJS", TK: "NZD", TL: "USD", TM: "TMT", TN: "TND", TO: "TOP", TR: "TRY",
+  TT: "TTD", TV: "AUD", TW: "TWD", TZ: "TZS", UA: "UAH", UG: "UGX", UM: "USD",
+  US: "USD", UY: "UYU", UZ: "UZS", VA: "EUR", VC: "XCD", VE: "VEF", VG: "USD",
+  VI: "USD", VN: "VND", VU: "VUV", WF: "XPF", WS: "WST", YE: "YER", YT: "EUR",
+  ZA: "ZAR", ZM: "ZMK", ZW: "ZWL"
 });
 
 const app = document.getElementById("app");
 const state = {
   record: null,
   mapping: null,
+  tableId: null,
   metadata: new Map(),
   docSettings: {
     locale: navigator.language || "en-US",
     currency: undefined,
     timezone: "UTC"
   },
-  tableId: null,
-  definitionKey: "",
   renderedRecordId: null,
+  definitionKey: "",
   controls: new Map(),
   timers: new Map(),
   saveChains: new Map(),
   lastQueuedValues: new Map(),
   fullRecordCache: null,
-  eventSequence: 0,
-  datePickers: new Set()
+  activeSaves: 0,
+  eventSequence: 0
 };
-const datepickerLocalePromises = new Map();
 
 function element(tagName, properties = {}, children = []) {
   const node = document.createElement(tagName);
 
   for (const [name, value] of Object.entries(properties)) {
+    if (value === undefined || value === null) {
+      continue;
+    }
     if (name === "className") {
       node.className = value;
     } else if (name === "textContent") {
@@ -82,28 +133,26 @@ function element(tagName, properties = {}, children = []) {
   for (const child of children) {
     node.appendChild(child);
   }
-
   return node;
 }
 
 function clearRenderedState() {
-  destroyDatePickers();
   state.controls.clear();
-  state.definitionKey = "";
   state.renderedRecordId = null;
+  state.definitionKey = "";
 }
 
 function showEmptyPanel() {
   clearRenderedState();
   app.replaceChildren(element("div", {
-    className: "card",
+    className: "card detail_theme_record_form detailview_record_single",
     ariaLabel: "Dynamic card"
   }));
 }
 
 function showAlert(message) {
   clearRenderedState();
-  const titleId = "dynamic-card-alert-title";
+  const titleId = "dyncard-alert-title";
   const panel = element("div", {
     className: "alert-panel",
     role: "alertdialog",
@@ -114,11 +163,10 @@ function showAlert(message) {
     element("strong", {
       id: titleId,
       className: "alert-title",
-      textContent: "Dynamic card configuration error"
+      textContent: "Dyncard configuration error"
     }),
     element("p", { textContent: message })
   ]);
-
   app.replaceChildren(element("div", { className: "alert" }, [panel]));
   panel.focus();
 }
@@ -128,23 +176,12 @@ function setStatus(message, isError = false) {
   if (!status) {
     return;
   }
-
   status.textContent = message;
   status.className = isError ? "status error" : "status";
 }
 
 function normalizeMapping(mapping) {
   return Array.isArray(mapping) ? mapping[0] || null : mapping || null;
-}
-
-function parseFieldList(value) {
-  if (value == null || value === "") {
-    return [];
-  }
-  if (!Array.isArray(value)) {
-    throw new Error("The mapped Fields column must be a Grist Choice List of column IDs.");
-  }
-  return value;
 }
 
 function parseWidgetOptions(rawOptions) {
@@ -154,7 +191,6 @@ function parseWidgetOptions(rawOptions) {
   if (typeof rawOptions === "object") {
     return rawOptions;
   }
-
   try {
     return JSON.parse(rawOptions);
   } catch (error) {
@@ -162,72 +198,91 @@ function parseWidgetOptions(rawOptions) {
   }
 }
 
+function parseFieldList(value) {
+  if (value == null || value === "") {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw new Error("The mapped Fields column must be a Grist Choice List of column IDs.");
+  }
+
+  const fieldIds = value.map((fieldId, index) => {
+    if (typeof fieldId !== "string" || fieldId.length === 0) {
+      throw new Error(`Item ${index + 1} in Fields must be a non-empty column ID.`);
+    }
+    return fieldId;
+  });
+  const duplicate = fieldIds.find((fieldId, index) => fieldIds.indexOf(fieldId) !== index);
+  if (duplicate) {
+    throw new Error(`Fields contains the duplicate column ID "${duplicate}".`);
+  }
+  return fieldIds;
+}
+
 function baseType(type) {
   return String(type || "").split(":", 1)[0];
-}
-
-function columnAlignment(column) {
-  const alignment = column?.options?.alignment;
-  return ["left", "center", "right"].includes(alignment)
-    ? alignment
-    : DEFAULT_ALIGNMENTS[column.baseType] || "left";
-}
-
-function applyColumnAlignment(control, column) {
-  const alignment = columnAlignment(column);
-  control.dataset.alignment = alignment;
-  if (column.baseType === "Bool" || column.baseType === "Choice" || column.baseType === "ChoiceList") {
-    control.style.justifyContent = alignment === "right" ? "flex-end" : alignment;
-    if (control.choiceDisplay) {
-      control.choiceDisplay.style.justifyContent = alignment === "right" ? "flex-end" : alignment;
-    }
-  } else {
-    control.style.textAlign = alignment;
-  }
 }
 
 function clamp(value, minimum, maximum) {
   return Math.min(maximum, Math.max(minimum, Number(value)));
 }
 
-function documentCurrency() {
-  if (state.docSettings.currency) {
-    return state.docSettings.currency;
-  }
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Port of grist-core/app/common/NumberFormat.ts.
+const currencyDisplay = (() => {
   try {
-    const locale = new Intl.Locale(state.docSettings.locale).maximize();
-    return REGION_CURRENCIES[locale.region] || "USD";
+    new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      currencyDisplay: "narrowSymbol"
+    });
+    return "narrowSymbol";
   } catch (error) {
-    return "USD";
+    return "symbol";
+  }
+})();
+
+function getLocaleCurrency(locale) {
+  let parts = String(locale || "").split("_");
+  if (parts.length !== 2) {
+    parts = String(locale || "").split("-");
+  }
+  const region = parts.length === 2 ? parts[1] : String(locale || "");
+  return LOCALE_CURRENCIES[region.toUpperCase()] || null;
+}
+
+function documentCurrency(options = {}) {
+  return options.currency || state.docSettings.currency ||
+    getLocaleCurrency(state.docSettings.locale || "en-US") || "USD";
+}
+
+function parseNumMode(numMode, currency) {
+  switch (numMode) {
+    case "currency":
+      return { style: "currency", currency, currencyDisplay };
+    case "decimal":
+      return { useGrouping: true };
+    case "percent":
+      return { style: "percent" };
+    case "scientific":
+      return { notation: "scientific" };
+    default:
+      return { useGrouping: false };
   }
 }
 
-function numberFormatOptions(column) {
-  const options = column.baseType === "Int"
+function numberOptions(column) {
+  return column.baseType === "Int"
     ? { decimals: 0, ...column.options }
     : column.options;
-  let intlOptions;
+}
 
-  switch (options.numMode) {
-    case "currency":
-      intlOptions = {
-        style: "currency",
-        currency: options.currency || documentCurrency(),
-        currencyDisplay: "narrowSymbol"
-      };
-      break;
-    case "decimal":
-      intlOptions = { useGrouping: true };
-      break;
-    case "percent":
-      intlOptions = { style: "percent" };
-      break;
-    case "scientific":
-      intlOptions = { notation: "scientific" };
-      break;
-    default:
-      intlOptions = { useGrouping: false };
-  }
+function buildNumberFormat(column) {
+  const options = numberOptions(column);
+  const intlOptions = parseNumMode(options.numMode, documentCurrency(options));
 
   if (options.decimals !== undefined && options.decimals !== null) {
     intlOptions.minimumFractionDigits = clamp(options.decimals, 0, 20);
@@ -242,26 +297,21 @@ function numberFormatOptions(column) {
   } else if (!options.numMode) {
     intlOptions.maximumFractionDigits = clamp(10, resolved.minimumFractionDigits || 0, 20);
   }
-  return intlOptions;
-}
-
-function numberFormatter(column) {
-  return new Intl.NumberFormat(state.docSettings.locale, numberFormatOptions(column));
+  return new Intl.NumberFormat(state.docSettings.locale, intlOptions);
 }
 
 function formatNumber(value, column) {
   if (value == null || value === "") {
     return "";
   }
-  const formatted = numberFormatter(column).format(Number(value));
+  const formatter = buildNumberFormat(column);
   if (column.options.numSign !== "parens") {
-    return formatted;
+    return formatter.format(value);
   }
-  return Number(value) >= 0
-    ? ` ${formatted} `
-    : `(${numberFormatter(column).format(-Number(value))})`;
+  return value >= 0 ? ` ${formatter.format(value)} ` : `(${formatter.format(-value)})`;
 }
 
+// Port of grist-core/app/client/widgets/NumericEditor.ts.
 function numericEditValue(value) {
   if (value == null || value === "") {
     return "";
@@ -269,91 +319,118 @@ function numericEditValue(value) {
   return new Intl.NumberFormat(state.docSettings.locale, {
     useGrouping: false,
     maximumFractionDigits: 20
-  }).format(Number(value));
+  }).format(value);
 }
 
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-// Adapted from grist-core's NumberParse. It accepts the symbols and digits used by the document locale.
-function parseLocalizedNumber(input, column) {
-  const locale = state.docSettings.locale;
-  const currency = column.options.currency || documentCurrency();
-  const modes = {
-    decimal: { useGrouping: true },
-    currency: { style: "currency", currency, currencyDisplay: "narrowSymbol" },
-    percent: { style: "percent" },
-    scientific: { notation: "scientific" }
-  };
-  const partsByMode = Object.fromEntries(Object.entries(modes).map(([mode, options]) => [
-    mode,
-    new Intl.NumberFormat(locale, options).formatToParts(-1234567.5678)
-  ]));
-  const part = (type, mode = "decimal") =>
-    partsByMode[mode].find(item => item.type === type)?.value || "";
-  const currencySymbol = part("currency", "currency");
-  const percentSymbol = part("percentSign", "percent");
-  const exponentSeparator = part("exponentSeparator", "scientific");
-  const decimalSeparator = part("decimal");
-  const minusSign = part("minusSign");
-  const separators = new Set([part("group"), part("group", "currency")].filter(Boolean));
-  const digits = new Map();
-  const digitFormatter = new Intl.NumberFormat(locale, { useGrouping: false });
-  for (let digit = 0; digit < 10; digit += 1) {
-    digits.set(digitFormatter.format(digit), String(digit));
-  }
-
-  let value = String(input);
-  const hadCurrency = currencySymbol && value.includes(currencySymbol);
-  const hadPercent = percentSymbol && value.includes(percentSymbol);
-  if (hadCurrency) {
-    value = value.replace(currencySymbol, "");
-  }
-  if (hadPercent) {
-    value = value.replace(percentSymbol, "");
-  }
-  value = value.replace(/[\s\u200e\u200f\u061c]/g, "");
-  const parenthesized = value.startsWith("(") && value.endsWith(")");
-  if (parenthesized) {
-    value = value.slice(1, -1);
-  }
-  if (!value) {
-    return null;
-  }
-
-  if (exponentSeparator) {
-    value = value.replace(new RegExp(escapeRegExp(exponentSeparator), "i"), "e");
-  }
-  for (const [localizedDigit, plainDigit] of digits) {
-    if (localizedDigit !== plainDigit) {
-      value = value.split(localizedDigit).join(plainDigit);
+function getDigitsMap(locale) {
+  const formatter = new Intl.NumberFormat(locale);
+  const result = new Map();
+  for (let index = 0; index < 10; index += 1) {
+    const digit = String(index);
+    const localeDigit = formatter.format(index);
+    if (localeDigit !== digit) {
+      result.set(localeDigit, digit);
     }
   }
-  for (const separator of separators) {
-    value = value.split(separator).join("");
-  }
-  if (decimalSeparator && decimalSeparator !== ".") {
-    value = value.replace(decimalSeparator, ".");
-  }
-  if (minusSign && minusSign !== "-") {
-    value = value.split(minusSign).join("-");
-  }
-  if (hadCurrency && value.endsWith("-")) {
-    value = `-${value.slice(0, -1)}`;
+  return result;
+}
+
+// Port of grist-core/app/common/NumberParse.ts. Parsing remains deliberately
+// permissive in the same places as Grist (grouping, standard digits, and signs).
+class NumberParse {
+  static removeCharsRegex = /[\s\u200e\u200f\u061c]/g;
+
+  constructor(locale, currency) {
+    this.locale = locale;
+    this.currency = currency;
+    const parts = new Map();
+    for (const numMode of NUMBER_MODES) {
+      const formatter = new Intl.NumberFormat(locale, parseNumMode(numMode, currency));
+      parts.set(numMode, formatter.formatToParts(-1234567.5678));
+    }
+    const getPart = (partType, numMode = "decimal") =>
+      parts.get(numMode).find(part => part.type === partType)?.value || "";
+
+    this.currencySymbol = getPart("currency", "currency");
+    this.percentageSymbol = getPart("percentSign", "percent");
+    this.exponentSeparator = getPart("exponentSeparator", "scientific");
+    this.minusSign = getPart("minusSign");
+    this.decimalSeparator = getPart("decimal");
+    this.digitGroupSeparator = getPart("group");
+    this.digitGroupSeparatorCurrency = getPart("group", "currency");
+    const currencyParts = parts.get("currency");
+    this.currencyEndsInMinusSign = currencyParts[currencyParts.length - 1]?.type === "minusSign";
+    this.digitsMap = getDigitsMap(locale);
+
+    this.exponentSeparatorRegex = new RegExp(escapeRegExp(this.exponentSeparator), "i");
+    const groupCharacters = escapeRegExp(
+      this.digitGroupSeparator + this.digitGroupSeparatorCurrency
+    );
+    this.digitGroupSeparatorRegex = groupCharacters
+      ? new RegExp(`[${groupCharacters}](\\d\\d)`, "g")
+      : /$a/;
+    if (this.digitsMap.size === 0) {
+      this.replaceDigits = value => value;
+    } else {
+      const digitsRegex = new RegExp([...this.digitsMap.keys()].join("|"), "g");
+      this.replaceDigits = value => value.replace(
+        digitsRegex,
+        digit => this.digitsMap.get(digit) || digit
+      );
+    }
   }
 
-  let result = Number(value);
-  if (!Number.isFinite(result) || (parenthesized && result <= 0)) {
-    return null;
+  parse(input) {
+    let [value, isCurrency] = removeSymbol(String(input), this.currencySymbol);
+    let isPercent;
+    [value, isPercent] = removeSymbol(value, this.percentageSymbol);
+    value = value.replace(NumberParse.removeCharsRegex, "");
+
+    const isParenthesized = value.startsWith("(") && value.endsWith(")");
+    if (isParenthesized) {
+      value = value.slice(1, -1);
+    }
+    if (value === "") {
+      return null;
+    }
+
+    value = value.replace(this.exponentSeparatorRegex, "e");
+    value = this.replaceDigits(value);
+    value = value.replace(this.digitGroupSeparatorRegex, "$1");
+    value = value.replace(this.decimalSeparator, ".");
+    value = value.replace(this.minusSign, "-");
+    value = value.replace(this.minusSign, "-");
+    if (isCurrency && this.currencyEndsInMinusSign && value.endsWith("-")) {
+      value = `-${value.slice(0, -1)}`;
+    }
+
+    let result = Number(value);
+    if (Number.isNaN(result)) {
+      return null;
+    }
+    if (isParenthesized) {
+      if (result <= 0) {
+        return null;
+      }
+      result = -result;
+    }
+    if (isPercent) {
+      result *= 0.01;
+    }
+    return result;
   }
-  if (parenthesized) {
-    result = -result;
-  }
-  if (hadPercent) {
-    result *= 0.01;
-  }
-  return result;
+}
+
+function removeSymbol(value, symbol) {
+  const removed = value.replace(symbol, "");
+  return [removed, removed.length < value.length];
+}
+
+function numberParser(column) {
+  return new NumberParse(
+    state.docSettings.locale,
+    documentCurrency(numberOptions(column))
+  );
 }
 
 async function getSelectedTableId() {
@@ -363,7 +440,6 @@ async function getSelectedTableId() {
   if (grist.selectedTable && typeof grist.selectedTable.getTableId === "function") {
     return grist.selectedTable.getTableId();
   }
-
   const table = typeof grist.getTable === "function" ? grist.getTable() : null;
   if (table && typeof table.getTableId === "function") {
     return table.getTableId();
@@ -376,10 +452,6 @@ async function getSelectedTableId() {
 
 async function fetchMetadata() {
   const tableId = await getSelectedTableId();
-
-  if (state.tableId === tableId && state.metadata.size) {
-    return state.metadata;
-  }
   if (state.tableId !== tableId) {
     state.fullRecordCache = null;
   }
@@ -391,13 +463,10 @@ async function fetchMetadata() {
     grist.docApi.fetchTable("_grist_DocInfo")
   ]);
   const tableIndex = tables.tableId.indexOf(tableId);
-
   if (tableIndex < 0) {
     throw new Error(`Metadata for table "${tableId}" was not found.`);
   }
 
-  const tableRef = tables.id[tableIndex];
-  const metadata = new Map();
   const documentSettings = parseWidgetOptions(docInfo.documentSettings?.[0]);
   state.docSettings = {
     locale: documentSettings.locale || navigator.language || "en-US",
@@ -405,22 +474,36 @@ async function fetchMetadata() {
     timezone: docInfo.timezone?.[0] || "UTC"
   };
 
+  const tableRef = tables.id[tableIndex];
+  const metadata = new Map();
+  const columnRecords = [];
+  const columnIdsByRef = new Map();
   for (let index = 0; index < columns.id.length; index += 1) {
     if (columns.parentId[index] !== tableRef) {
       continue;
     }
-
     const colId = columns.colId[index];
-    metadata.set(colId, {
+    const record = {
       colId,
       label: columns.label?.[index] || colId,
       description: columns.description?.[index] || "",
       type: columns.type?.[index] || "",
       isFormula: Boolean(columns.isFormula?.[index]),
-      options: parseWidgetOptions(columns.widgetOptions?.[index])
+      options: parseWidgetOptions(columns.widgetOptions?.[index]),
+      ruleRefs: decodeCellValue(columns.rules?.[index])
+    };
+    columnRecords.push(record);
+    columnIdsByRef.set(String(columns.id[index]), colId);
+  }
+  for (const record of columnRecords) {
+    const ruleRefs = Array.isArray(record.ruleRefs) ? record.ruleRefs : [];
+    metadata.set(record.colId, {
+      ...record,
+      ruleColumnIds: ruleRefs
+        .map(ruleRef => columnIdsByRef.get(String(ruleRef)))
+        .filter(Boolean)
     });
   }
-
   if (!metadata.size) {
     throw new Error(`No column metadata was found for table "${tableId}".`);
   }
@@ -431,11 +514,11 @@ async function fetchMetadata() {
 function resolveFields(fieldIds, metadata) {
   return fieldIds.map(fieldId => {
     const column = metadata.get(fieldId);
-
     if (!column) {
-      throw new Error(`Field "${fieldId}" does not exist in the linked table. Use column IDs, not labels.`);
+      throw new Error(
+        `Field "${fieldId}" does not exist in the linked table. Use column IDs, not labels.`
+      );
     }
-
     const type = baseType(column.type);
     if (!SUPPORTED_TYPES.has(type)) {
       throw new Error(
@@ -447,10 +530,23 @@ function resolveFields(fieldIds, metadata) {
   });
 }
 
+function decodeCellValue(value) {
+  if (Array.isArray(value) && value[0] === "L") {
+    return value.slice(1);
+  }
+  if (Array.isArray(value) && typeof grist.decodeObject === "function") {
+    try {
+      return grist.decodeObject(value);
+    } catch (error) {
+      return value;
+    }
+  }
+  return value;
+}
+
 async function fetchFullRecord(rowId) {
   const tableId = state.tableId || await getSelectedTableId();
   const cached = state.fullRecordCache;
-
   if (cached && cached.tableId === tableId && cached.rowId === rowId &&
       Date.now() - cached.fetchedAt < 1000) {
     return { ...cached.record };
@@ -460,7 +556,6 @@ async function fetchFullRecord(rowId) {
   const rowIndex = Array.isArray(table.id)
     ? table.id.findIndex(id => String(id) === String(rowId))
     : -1;
-
   if (rowIndex < 0) {
     throw new Error(`Record ${rowId} was not found in the linked table.`);
   }
@@ -468,10 +563,9 @@ async function fetchFullRecord(rowId) {
   const record = { id: rowId };
   for (const [columnId, values] of Object.entries(table)) {
     if (columnId !== "id" && Array.isArray(values)) {
-      record[columnId] = values[rowIndex];
+      record[columnId] = decodeCellValue(values[rowIndex]);
     }
   }
-
   state.fullRecordCache = {
     tableId,
     rowId,
@@ -485,7 +579,6 @@ async function includeColumns(record, columnIds) {
   const missing = columnIds.filter(columnId =>
     !Object.prototype.hasOwnProperty.call(record, columnId)
   );
-
   if (!missing.length) {
     return record;
   }
@@ -494,10 +587,9 @@ async function includeColumns(record, columnIds) {
   const unavailable = missing.filter(columnId =>
     !Object.prototype.hasOwnProperty.call(fullRecord, columnId)
   );
-
   if (unavailable.length) {
     throw new Error(
-      `The following fields are unavailable under the current access rules: ` +
+      "The following fields are unavailable under the current access rules: " +
       `${unavailable.map(columnId => `"${columnId}"`).join(", ")}.`
     );
   }
@@ -508,8 +600,7 @@ function normalizeChoiceList(value) {
   if (!Array.isArray(value)) {
     return [];
   }
-  const values = value[0] === "L" ? value.slice(1) : value;
-  return values.map(String);
+  return value.map(String);
 }
 
 function configuredChoices(column) {
@@ -518,527 +609,329 @@ function configuredChoices(column) {
     : [];
 }
 
-function choiceValues(column, currentValue) {
+function allChoiceValues(column, value) {
   const current = column.baseType === "ChoiceList"
-    ? normalizeChoiceList(currentValue)
-    : currentValue == null || currentValue === "" ? [] : [String(currentValue)];
-  return Array.from(new Set([...configuredChoices(column), ...current]));
+    ? normalizeChoiceList(value)
+    : value == null || value === "" ? [] : [String(value)];
+  return [...new Set([...configuredChoices(column), ...current])];
 }
 
-function inputId(columnId) {
-  return `dynamic-card-${columnId.replace(/[^A-Za-z0-9_-]/g, "_")}`;
+function columnAlignment(column) {
+  const configured = column.options.alignment;
+  return ["left", "center", "right"].includes(configured)
+    ? configured
+    : DEFAULT_ALIGNMENTS[column.baseType];
+}
+
+function applyAlignment(control, column) {
+  const alignment = columnAlignment(column);
+  control.dataset.alignment = alignment;
+  if (column.baseType === "Bool" || column.baseType === "ChoiceList") {
+    control.style.justifyContent = alignment === "right" ? "flex-end" : alignment;
+  } else {
+    control.style.textAlign = alignment;
+  }
+}
+
+// Browser port of grist-core/app/common/Styles.ts CombinedStyle.
+function combinedRuleStyle(column, record) {
+  const ruleColumnIds = column.ruleColumnIds || [];
+  if (!ruleColumnIds.length) {
+    return { style: {}, error: false };
+  }
+
+  const flags = ruleColumnIds.map(columnId => record[columnId]);
+  if (flags.some(value => value !== null && typeof value !== "boolean")) {
+    return { style: {}, error: true };
+  }
+
+  const rules = Array.isArray(column.options.rulesOptions)
+    ? column.options.rulesOptions
+    : [];
+  if (rules.length < flags.length) {
+    return { style: {}, error: false };
+  }
+
+  const style = {};
+  for (let index = 0; index < rules.length; index += 1) {
+    if (!flags[index]) {
+      continue;
+    }
+    for (const optionName of [
+      "textColor",
+      "fillColor",
+      "fontBold",
+      "fontUnderline",
+      "fontItalic",
+      "fontStrikethrough"
+    ]) {
+      const option = rules[index]?.[optionName];
+      style[optionName] = option || style[optionName];
+    }
+  }
+  return { style, error: false };
+}
+
+// Browser port of FieldBuilder's opaque-fill normalization.
+function notTransparent(color) {
+  if (!color) {
+    return color;
+  }
+  if (color.startsWith("#") && color.length === 9) {
+    return color.substring(0, 7);
+  }
+  if (color.startsWith("rgba")) {
+    return color.replace(
+      /^rgba\((\d+)[,\s]+(\d+)[,\s]+(\d+)[/,\s]+([\d.%]+)\)$/i,
+      "rgb($1, $2, $3)"
+    );
+  }
+  return color;
+}
+
+function styleColor(value) {
+  return typeof value === "string" ? value : "";
+}
+
+function setStyleVariable(elementNode, name, value) {
+  if (value) {
+    elementNode.style.setProperty(name, value);
+  } else {
+    elementNode.style.removeProperty(name);
+  }
+}
+
+function applyCellStyle(valueElement, control, column, record) {
+  const { style: ruleStyle, error } = combinedRuleStyle(column, record);
+  setStyleVariable(
+    valueElement,
+    "--grist-cell-color",
+    styleColor(column.options.textColor)
+  );
+  setStyleVariable(
+    valueElement,
+    "--grist-cell-background-color",
+    notTransparent(styleColor(column.options.fillColor))
+  );
+  setStyleVariable(
+    valueElement,
+    "--grist-rule-color",
+    styleColor(ruleStyle.textColor)
+  );
+  setStyleVariable(
+    valueElement,
+    "--grist-column-rule-background-color",
+    notTransparent(styleColor(ruleStyle.fillColor))
+  );
+
+  for (const [optionName, className] of Object.entries(FONT_STYLE_CLASSES)) {
+    control.classList.toggle(
+      className,
+      Boolean(ruleStyle[optionName] || column.options[optionName])
+    );
+  }
+  control.classList.toggle("field-error-from-style", error);
+}
+
+function inputId(columnId, index) {
+  return `dyncard-${index}-${columnId.replace(/[^A-Za-z0-9_-]/g, "_")}`;
 }
 
 function makeLabel(column, id) {
-  const label = element("div", {
-    className: "field-label g_record_detail_label_container"
-  }, [
+  const container = element("div", { className: "g_record_detail_label_container" }, [
     element("label", {
-      className: "field-label-text g_record_detail_label",
+      className: "g_record_detail_label",
       htmlFor: id,
       textContent: column.label
     })
   ]);
 
   if (column.description) {
-    label.appendChild(element("button", {
+    // Native title tooltip by design; no custom tooltip lifecycle or popup.
+    container.appendChild(element("span", {
       className: "info",
-      type: "button",
       title: column.description,
+      role: "img",
+      tabIndex: 0,
       ariaLabel: column.description
-    }, [
-      element("span", { className: "info_toggle_icon", ariaHidden: "true" })
-    ]));
+    }, [element("span", { className: "info_toggle_icon", ariaHidden: "true" })]));
   }
-  return label;
+  return container;
 }
 
-function commonControl(column, id) {
+function commonControl(column, id, className = "field_clip control") {
   return {
     id,
-    className: "field_clip control",
+    className,
     disabled: column.isFormula,
     ariaLabel: column.label
   };
 }
 
-function createControl(column, value) {
-  const id = inputId(column.colId);
+function createControl(column, value, id) {
   let control;
-
   switch (column.baseType) {
-    case "Text": {
-      const properties = {
+    case "Text":
+      control = element("textarea", {
         ...commonControl(column, id),
         rows: 1,
-        value: value == null ? "" : String(value)
-      };
-      control = element("textarea", properties);
-      bindTextLike(control, column);
+        value: value == null ? "" : String(value),
+        spellcheck: true
+      });
+      bindTypedControl(control, column);
+      queueMicrotask(() => resizeTextArea(control));
       break;
-    }
 
     case "Numeric":
     case "Int":
       control = element("input", {
         ...commonControl(column, id),
         type: "text",
-        inputMode: "decimal",
-        autoComplete: "off",
-        spellcheck: false,
-        value: formatNumber(value, column)
+        inputMode: column.baseType === "Int" ? "numeric" : "decimal",
+        value: formatNumber(value, column),
+        autocomplete: "off"
       });
       bindNumericControl(control, column);
       break;
 
     case "Bool":
-      control = createToggle(column, id, Boolean(value));
+      control = createBoolControl(column, value, id);
       break;
 
-    case "Date": {
-      const format = fullDateFormat(column);
+    case "Date":
       control = element("input", {
-        ...commonControl(column, id),
-        type: "text",
-        inputMode: /MMM|ddd|dd/.test(format) ? "text" : "numeric",
-        autoComplete: "off",
-        spellcheck: false,
-        placeholder: datePlaceholder(format),
-        value: dateInputValue(value, column)
+        ...commonControl(column, id, "control"),
+        type: "date",
+        value: dateInputValue(value)
       });
-      bindDateControl(control, column);
+      bindImmediateControl(control, column);
       break;
-    }
 
     case "DateTime":
-      control = createDateTimeControl(column, id, value);
+      control = element("input", {
+        ...commonControl(column, id, "control"),
+        type: "datetime-local",
+        step: "1",
+        value: dateTimeInputValue(value, column)
+      });
+      bindImmediateControl(control, column);
       break;
 
     case "Choice":
-      control = createChoice(column, id, value);
+      control = element("select", commonControl(column, id, "control"));
+      rebuildChoice(control, column, value);
+      bindImmediateControl(control, column);
       break;
 
     case "ChoiceList":
-      control = createChoiceList(column, id, value);
+      control = element("div", {
+        id,
+        className: "control choice-list-control",
+        role: "group",
+        ariaLabel: column.label,
+        ariaDisabled: column.isFormula
+      });
+      rebuildChoiceList(control, column, value);
       break;
   }
-
-  control.dataset.columnId = column.colId;
-  applyColumnAlignment(control, column);
-  state.controls.set(column.colId, { control, column });
-  return { id, control };
+  control.dataset.gristType = column.baseType;
+  applyAlignment(control, column);
+  return control;
 }
 
-function createToggle(column, id, checked) {
+function createBoolControl(column, value, id) {
   const input = element("input", {
     id,
+    className: "native-checkbox",
     type: "checkbox",
-    checked,
+    checked: Boolean(value),
     disabled: column.isFormula,
     ariaLabel: column.label
   });
-  const useSwitch = column.options.widget === "Switch";
-  let indicator;
-  if (useSwitch) {
-    indicator = element("span", { className: "switch-shell", ariaHidden: "true" }, [
-      element("span", { className: "switch-slider" }),
-      element("span", { className: "switch-circle" })
-    ]);
-  } else {
-    indicator = element("span", { className: "widget_checkbox", ariaHidden: "true" }, [
-      element("span", { className: "widget_checkmark" }, [
-        element("span", { className: "checkmark_kick" }),
-        element("span", { className: "checkmark_stem" })
-      ])
-    ]);
-  }
-  const toggle = element("label", {
-    className: `bool-toggle ${useSwitch ? "bool-switch" : "bool-checkbox"}`,
-    htmlFor: id
-  }, [input, indicator]);
-  const wrapper = element("div", {
-    className: "field_clip bool-control"
-  }, [toggle]);
-
-  if (!column.isFormula) {
-    input.addEventListener("change", () => saveFromControl(column, wrapper));
-  }
-  wrapper.valueInput = input;
-  return wrapper;
+  const control = element("div", {
+    className: "field_clip control bool-control"
+  }, [input]);
+  control.valueInput = input;
+  input.addEventListener("change", () => saveFromControl(column, control));
+  return control;
 }
 
-function choiceStyle(column, choice) {
-  const options = column.options.choiceOptions;
-  return options && typeof options === "object" && options[choice]
-    ? options[choice]
-    : {};
-}
-
-function readableChoiceText(fillColor) {
-  const match = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(fillColor || "");
-  if (!match) {
-    return "var(--grist-theme-choice-token-fg, #262633)";
-  }
-  let hex = match[1];
-  if (hex.length === 3) {
-    hex = Array.from(hex, character => character + character).join("");
-  }
-  const rgb = [0, 2, 4].map(index => Number.parseInt(hex.slice(index, index + 2), 16) / 255);
-  const linear = rgb.map(value => value <= 0.03928
-    ? value / 12.92
-    : ((value + 0.055) / 1.055) ** 2.4);
-  const luminance = 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
-  const shades = ["#e8e8e8", "#bfbfbf", "#959595", "#70707d", "#44444c", "#242428", "#000000"];
-  let best = shades[0];
-  let bestContrast = 0;
-  for (const shade of shades) {
-    const value = Number.parseInt(shade.slice(1, 3), 16) / 255;
-    const shadeLinear = value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
-    const contrast = (Math.max(luminance, shadeLinear) + 0.05) /
-      (Math.min(luminance, shadeLinear) + 0.05);
-    if (contrast > bestContrast) {
-      best = shade;
-      bestContrast = contrast;
-    }
-    if (contrast > 7) {
-      break;
-    }
-  }
-  return best;
-}
-
-function applyChoiceStyle(node, column, choice, isConfigured) {
-  if (choice === "") {
-    node.style.backgroundColor = "inherit";
-    node.style.color = "inherit";
-    node.style.fontWeight = "";
-    node.style.fontStyle = "";
-    node.style.textDecoration = "";
-    node.classList.remove("invalid-choice");
-    return;
-  }
-  const style = choiceStyle(column, choice);
-  const fillColor = style.fillColor || "var(--grist-theme-choice-token-bg, #e8e8e8)";
-  const textColor = style.textColor || (style.fillColor
-    ? readableChoiceText(style.fillColor)
-    : "var(--grist-theme-choice-token-fg, #262633)");
-  node.style.backgroundColor = fillColor;
-  node.style.color = textColor;
-  node.style.fontWeight = style.fontBold ? "bold" : "";
-  node.style.fontStyle = style.fontItalic ? "italic" : "";
-  node.style.textDecoration = [
-    style.fontUnderline ? "underline" : "",
-    style.fontStrikethrough ? "line-through" : ""
-  ].filter(Boolean).join(" ");
-  node.classList.toggle("invalid-choice", !isConfigured);
-}
-
-function choiceTokenElement(column, choice, isConfigured) {
-  const isBlank = String(choice).trim() === "";
-  const token = element("span", {
-    className: isBlank ? "choice-token blank-choice" : "choice-token",
-    textContent: isBlank ? "[Blank]" : String(choice)
-  });
-  applyChoiceStyle(token, column, String(choice), isConfigured);
-  return token;
-}
-
-function appendSingleChoiceOption(wrapper, column, choice, isConfigured) {
-  const option = element("button", {
-    className: "choice-option choice-single-option",
-    type: "button",
-    disabled: column.isFormula,
-    role: "option",
-    ariaSelected: String(wrapper.valueInput.value === choice)
-  }, [
-    choiceTokenElement(column, choice, isConfigured)
-  ]);
-  option.dataset.value = choice;
-  option.dataset.configured = String(isConfigured);
-  if (!column.isFormula) {
-    option.addEventListener("click", () => {
-      wrapper.valueInput.value = choice;
-      updateChoiceDisplay(wrapper, column, choice);
-      for (const item of wrapper.choiceMenu.querySelectorAll(".choice-single-option")) {
-        item.setAttribute("aria-selected", String(item.dataset.value === choice));
-      }
-      wrapper.classList.remove("open");
-      wrapper.choiceDisplay.setAttribute("aria-expanded", "false");
-      wrapper.choiceDisplay.focus();
-      saveFromControl(column, wrapper);
-    });
-  }
-  wrapper.choiceMenu.appendChild(option);
-}
-
-function createChoice(column, id, value) {
+function rebuildChoice(select, column, value) {
   const current = value == null ? "" : String(value);
-  const configured = new Set(configuredChoices(column));
-  const hidden = element("input", {
-    type: "hidden",
-    value: current,
-    disabled: column.isFormula
-  });
-  const display = element("button", {
-    id,
-    className: "choice-display",
-    type: "button",
-    disabled: column.isFormula,
-    ariaLabel: column.label,
-    ariaExpanded: "false",
-    ariaHaspopup: "listbox"
-  });
-  const menu = element("div", {
-    className: "choice-menu",
-    role: "listbox"
-  });
-  const wrapper = element("div", {
-    className: column.isFormula
-      ? "field_clip control choice-control disabled"
-      : "field_clip control choice-control"
-  }, [hidden, display, menu]);
-  wrapper.valueInput = hidden;
-  wrapper.choiceDisplay = display;
-  wrapper.choiceMenu = menu;
-  appendSingleChoiceOption(wrapper, column, "", true);
-  for (const choice of choiceValues(column, current)) {
-    appendSingleChoiceOption(wrapper, column, choice, configured.has(choice));
+  const options = [element("option", { value: "", textContent: "" })];
+  for (const choice of allChoiceValues(column, value)) {
+    options.push(element("option", {
+      value: choice,
+      textContent: choice,
+      selected: choice === current
+    }));
   }
-  updateChoiceDisplay(wrapper, column, value);
-  if (!column.isFormula) {
-    display.addEventListener("click", event => {
-      event.stopPropagation();
-      const open = wrapper.classList.toggle("open");
-      display.setAttribute("aria-expanded", String(open));
-    });
-    wrapper.addEventListener("keydown", event => {
-      if (event.key === "Escape") {
-        wrapper.classList.remove("open");
-        display.setAttribute("aria-expanded", "false");
-        display.focus();
-      }
-    });
-  }
-  return wrapper;
+  select.replaceChildren(...options);
+  select.value = current;
 }
 
-function updateChoiceDisplay(wrapper, column, value) {
-  const choice = value == null ? "" : String(value);
-  const configured = new Set(configuredChoices(column));
-  wrapper.choiceDisplay.replaceChildren();
-  if (choice) {
-    wrapper.choiceDisplay.appendChild(
-      choiceTokenElement(column, choice, configured.has(choice))
-    );
-  }
-}
-
-function appendChoiceMenuOption(wrapper, column, choice, checked, isConfigured) {
-  const checkbox = element("input", {
-    type: "checkbox",
-    value: choice,
-    checked,
-    disabled: column.isFormula,
-    ariaLabel: choice
-  });
-  const option = element("label", { className: "choice-option" }, [
-    checkbox,
-    choiceTokenElement(column, choice, isConfigured)
-  ]);
-  option.dataset.configured = String(isConfigured);
-
-  if (!column.isFormula) {
-    checkbox.addEventListener("change", () => {
-      rebuildChoiceListDisplay(wrapper, column);
-      saveFromControl(column, wrapper);
-    });
-  }
-  wrapper.choiceMenu.appendChild(option);
-}
-
-function rebuildChoiceListDisplay(wrapper, column) {
-  const configured = new Set(configuredChoices(column));
-  const selected = Array.from(
-    wrapper.querySelectorAll(".choice-menu input:checked"),
-    checkbox => checkbox.value
-  );
-  wrapper.choiceDisplay.replaceChildren();
-  for (const choice of selected) {
-    wrapper.choiceDisplay.appendChild(
-      choiceTokenElement(column, choice, configured.has(choice))
-    );
-  }
-}
-
-function createChoiceList(column, id, value) {
+function rebuildChoiceList(control, column, value) {
   const selected = new Set(normalizeChoiceList(value));
-  const configured = new Set(configuredChoices(column));
-  const wrapper = element("div", {
-    id,
-    className: column.isFormula
-      ? "field_clip choice-list disabled"
-      : "field_clip choice-list",
-    role: "group",
-    ariaLabel: column.label
-  });
-  const display = element("button", {
-    className: "choice-list-display",
-    type: "button",
-    disabled: column.isFormula,
-    ariaExpanded: "false",
-    ariaHaspopup: "listbox"
-  });
-  const menu = element("div", {
-    className: "choice-menu",
-    role: "listbox",
-    ariaMultiselectable: "true"
-  });
-  wrapper.choiceDisplay = display;
-  wrapper.choiceMenu = menu;
-  wrapper.append(display, menu);
-  const choices = choiceValues(column, value);
+  const choices = allChoiceValues(column, value);
+  const children = [];
 
   if (!choices.length) {
-    menu.appendChild(element("span", {
+    children.push(element("span", {
       className: "empty-choice-list",
       textContent: "No choices configured"
     }));
   }
   for (const choice of choices) {
-    appendChoiceMenuOption(wrapper, column, choice, selected.has(choice), configured.has(choice));
-  }
-  rebuildChoiceListDisplay(wrapper, column);
-  if (!column.isFormula) {
-    display.addEventListener("click", event => {
-      event.stopPropagation();
-      const open = wrapper.classList.toggle("open");
-      display.setAttribute("aria-expanded", String(open));
+    const checkbox = element("input", {
+      className: "native-checkbox",
+      type: "checkbox",
+      value: choice,
+      checked: selected.has(choice),
+      disabled: column.isFormula,
+      ariaLabel: choice
     });
-    wrapper.addEventListener("keydown", event => {
-      if (event.key === "Escape") {
-        wrapper.classList.remove("open");
-        display.setAttribute("aria-expanded", "false");
-        display.focus();
-      }
-    });
+    checkbox.addEventListener("change", () => saveFromControl(column, control));
+    children.push(element("label", { className: "choice-option" }, [
+      checkbox,
+      element("span", { textContent: choice })
+    ]));
   }
-  return wrapper;
+  control.replaceChildren(...children);
 }
 
-function resizeTextArea(control) {
-  control.style.height = "auto";
-  const borderHeight = control.offsetHeight - control.clientHeight;
-  control.style.height = `${control.scrollHeight + borderHeight}px`;
-}
-
-function resizeTextControls() {
-  for (const { control, column } of state.controls.values()) {
-    if (column.baseType === "Text") {
-      resizeTextArea(controlInput(control));
-    }
-  }
-}
-
-function bindTextLike(control, column) {
-  if (control.tagName === "TEXTAREA") {
-    control.addEventListener("input", () => resizeTextArea(control));
-  }
-  if (column.isFormula) {
-    return;
-  }
-  control.addEventListener("input", () => scheduleSave(column, control));
+function bindTypedControl(control, column) {
+  control.addEventListener("input", () => {
+    resizeTextArea(control);
+    scheduleSave(column, control);
+  });
   control.addEventListener("change", () => saveFromControl(column, control));
   control.addEventListener("blur", () => saveFromControl(column, control));
 }
 
 function bindNumericControl(control, column) {
-  if (column.isFormula) {
-    return;
-  }
   control.addEventListener("focus", () => {
-    const currentValue = state.record?.[column.colId];
-    control.value = numericEditValue(currentValue);
-    control.dataset.editing = "true";
-    control.select();
-  });
-  control.addEventListener("input", () => scheduleSave(column, control));
-  control.addEventListener("change", () => saveFromControl(column, control));
-  control.addEventListener("blur", () => {
-    const result = saveFromControl(column, control);
-    if (result.ok) {
-      control.value = formatNumber(result.value, column);
-      control.dataset.editing = "false";
+    const entry = state.controls.get(column.colId);
+    if (entry && control.getAttribute("aria-invalid") !== "true") {
+      control.value = numericEditValue(entry.rawValue);
+      control.select();
     }
   });
+  control.addEventListener("input", () => scheduleSave(column, control));
+  const commit = () => {
+    if (saveFromControl(column, control)) {
+      const entry = state.controls.get(column.colId);
+      control.value = formatNumber(entry?.rawValue, column);
+    }
+  };
+  control.addEventListener("change", commit);
+  control.addEventListener("blur", commit);
 }
 
-function bindImmediate(control, column) {
-  if (!column.isFormula) {
-    control.addEventListener("change", () => saveFromControl(column, control));
-  }
-}
-
-function bindDateControl(control, column) {
-  if (column.isFormula) {
-    return;
-  }
+function bindImmediateControl(control, column) {
   control.addEventListener("change", () => saveFromControl(column, control));
-  void attachDatePicker(control, column).catch(error => {
-    console.error(`Could not initialize the calendar for ${column.colId}`, error);
-    setStatus(`Could not initialize the calendar for ${column.label}.`, true);
-  });
-}
-
-function createDateTimeControl(column, id, value) {
-  const timezone = dateTimeZone(column);
-  const dateInput = element("input", {
-    id,
-    className: "datetime-date",
-    type: "text",
-    inputMode: /MMM|ddd|dd/.test(fullDateFormat(column)) ? "text" : "numeric",
-    autoComplete: "off",
-    spellcheck: false,
-    disabled: column.isFormula,
-    ariaLabel: `${column.label} date`,
-    placeholder: datePlaceholder(fullDateFormat(column)),
-    value: dateTimeParts(value, column).date
-  });
-  const timeInput = element("input", {
-    className: "datetime-time",
-    type: "text",
-    inputMode: "text",
-    autoComplete: "off",
-    spellcheck: false,
-    disabled: column.isFormula,
-    ariaLabel: `${column.label} time`,
-    placeholder: moment.tz("0", "H", timezone).format(timeFormat(column)),
-    value: dateTimeParts(value, column).time
-  });
-  const wrapper = element("div", {
-    className: "field_clip control datetime-control",
-    ariaLabel: column.label
-  }, [
-    dateInput,
-    timeInput
-  ]);
-  wrapper.valueInput = dateInput;
-  wrapper.dateInput = dateInput;
-  wrapper.timeInput = timeInput;
-
-  if (!column.isFormula) {
-    dateInput.addEventListener("change", () => saveFromControl(column, wrapper));
-    timeInput.addEventListener("change", () => saveFromControl(column, wrapper));
-    timeInput.addEventListener("blur", () => saveFromControl(column, wrapper));
-    void attachDatePicker(dateInput, column, wrapper).catch(error => {
-      console.error(`Could not initialize the calendar for ${column.colId}`, error);
-      setStatus(`Could not initialize the calendar for ${column.label}.`, true);
-    });
-  }
-  return wrapper;
 }
 
 function renderCard(record, fields) {
-  destroyDatePickers();
   state.controls.clear();
   const card = element("form", {
     className: "card detail_theme_record_form detailview_record_single",
@@ -1046,29 +939,28 @@ function renderCard(record, fields) {
   });
   card.addEventListener("submit", event => event.preventDefault());
 
-  for (const column of fields) {
-    const { id, control } = createControl(column, record[column.colId]);
+  fields.forEach((column, index) => {
+    const id = inputId(column.colId, index);
+    const control = createControl(column, record[column.colId], id);
     const value = element("div", {
       className: column.isFormula
-        ? "field-value g_record_detail_value formula-field formula_field"
-        : "field-value g_record_detail_value"
-    });
-    if (column.isFormula) {
-      value.appendChild(element("span", {
-        className: "formula-indicator field-icon",
-        role: "img",
-        ariaLabel: "Formula field",
-        title: "Formula field"
-      }));
-    }
-    value.appendChild(control);
+        ? "g_record_detail_value formula_field"
+        : "g_record_detail_value"
+    }, column.isFormula
+      ? [element("span", { className: "field-icon", ariaHidden: "true" }), control]
+      : [control]);
+    applyCellStyle(value, control, column, record);
     card.appendChild(element("div", {
-      className: "field g_record_detail_el detail_theme_field_form"
-    }, [
-      makeLabel(column, id),
-      value
-    ]));
-  }
+      className: "g_record_detail_el detail_theme_field_form"
+    }, [makeLabel(column, id), value]));
+    state.controls.set(column.colId, {
+      column,
+      control,
+      valueElement: value,
+      rawValue: record[column.colId]
+    });
+  });
+
   card.appendChild(element("div", {
     id: "status",
     className: "status",
@@ -1076,7 +968,6 @@ function renderCard(record, fields) {
     ariaLive: "polite"
   }));
   app.replaceChildren(card);
-  resizeTextControls();
 }
 
 function controlInput(control) {
@@ -1085,18 +976,16 @@ function controlInput(control) {
 
 function readControl(column, control) {
   const input = controlInput(control);
-
   switch (column.baseType) {
     case "Text":
       return input.value;
     case "Numeric":
     case "Int": {
-      if (input.value === "") {
+      if (input.value.trim() === "") {
         return null;
       }
-      const numeric = parseLocalizedNumber(input.value, column);
-      if (numeric === null ||
-          (column.baseType === "Int" && !Number.isInteger(numeric))) {
+      const numeric = numberParser(column).parse(input.value);
+      if (numeric === null || (column.baseType === "Int" && !Number.isInteger(numeric))) {
         throw new Error(
           `${column.label} must be ${column.baseType === "Int" ? "an integer" : "a number"}.`
         );
@@ -1106,16 +995,30 @@ function readControl(column, control) {
     case "Bool":
       return input.checked;
     case "Date":
-      return input.value
-        ? parseDateInput(input.value, column)
-        : null;
-    case "DateTime":
-      return parseDateTimeControl(control, column);
+      if (!input.value) {
+        return null;
+      }
+      return validDateTimestamp(
+        moment.utc(input.value, "YYYY-MM-DD", true).valueOf() / 1000,
+        column
+      );
+    case "DateTime": {
+      if (!input.value) {
+        return null;
+      }
+      const parsed = moment.tz(
+        input.value,
+        ["YYYY-MM-DDTHH:mm", "YYYY-MM-DDTHH:mm:ss", "YYYY-MM-DDTHH:mm:ss.SSS"],
+        true,
+        dateTimeZone(column)
+      );
+      return validDateTimestamp(parsed.valueOf() / 1000, column);
+    }
     case "Choice":
       return input.value;
     case "ChoiceList": {
       const choices = Array.from(
-        control.querySelectorAll("input:checked"),
+        control.querySelectorAll("input[type=checkbox]:checked"),
         checkbox => checkbox.value
       );
       return choices.length ? ["L", ...choices] : null;
@@ -1125,7 +1028,7 @@ function readControl(column, control) {
   }
 }
 
-function validTimestamp(value, column) {
+function validDateTimestamp(value, column) {
   if (!Number.isFinite(value)) {
     throw new Error(
       `${column.label} must contain a valid date` +
@@ -1133,6 +1036,44 @@ function validTimestamp(value, column) {
     );
   }
   return value;
+}
+
+function resizeTextArea(control) {
+  if (!control || control.tagName !== "TEXTAREA") {
+    return;
+  }
+  control.style.height = "21px";
+  control.style.height = `${Math.max(21, control.scrollHeight)}px`;
+}
+
+function resizeTextControls() {
+  for (const { column, control } of state.controls.values()) {
+    if (column.baseType === "Text") {
+      resizeTextArea(control);
+    }
+  }
+}
+
+function scheduleSave(column, control) {
+  let value;
+  try {
+    value = readControl(column, control);
+    controlInput(control).setAttribute("aria-invalid", "false");
+  } catch (error) {
+    clearScheduledSave(column.colId);
+    controlInput(control).setAttribute("aria-invalid", "true");
+    setStatus(error.message, true);
+    return;
+  }
+
+  clearScheduledSave(column.colId);
+  const rowId = state.record?.id;
+  const timeout = window.setTimeout(() => {
+    state.timers.delete(column.colId);
+    void queueSave(rowId, column, value);
+  }, AUTOSAVE_DELAY_MS);
+  state.timers.set(column.colId, { timeout, rowId, column, value });
+  setStatus("Unsaved changes…");
 }
 
 function clearScheduledSave(columnId) {
@@ -1143,136 +1084,126 @@ function clearScheduledSave(columnId) {
   }
 }
 
-function scheduleSave(column, control) {
-  clearScheduledSave(column.colId);
-  let value;
-
-  try {
-    value = readControl(column, control);
-    controlInput(control).setAttribute("aria-invalid", "false");
-  } catch (error) {
-    controlInput(control).setAttribute("aria-invalid", "true");
-    setStatus(error.message, true);
-    return;
-  }
-
-  const rowId = state.record?.id;
-  const timeout = window.setTimeout(() => {
-    state.timers.delete(column.colId);
-    void saveValue(rowId, column, value);
-  }, AUTOSAVE_DELAY_MS);
-
-  state.timers.set(column.colId, { timeout, rowId, column, value });
-  setStatus("Unsaved changes…");
-}
-
 function saveFromControl(column, control) {
   clearScheduledSave(column.colId);
   let value;
-
   try {
     value = readControl(column, control);
     controlInput(control).setAttribute("aria-invalid", "false");
   } catch (error) {
     controlInput(control).setAttribute("aria-invalid", "true");
     setStatus(error.message, true);
-    return { ok: false };
+    return false;
   }
-  void saveValue(state.record?.id, column, value);
-  return { ok: true, value };
+
+  const entry = state.controls.get(column.colId);
+  if (entry) {
+    entry.rawValue = decodedSavedValue(column, value);
+  }
+  void queueSave(state.record?.id, column, value);
+  return true;
 }
 
 function saveKey(rowId, columnId) {
-  return `${String(rowId)}\u0000${columnId}`;
+  return `${rowId}\u0000${columnId}`;
 }
 
-function hasPendingSave(rowId, columnId) {
-  return state.saveChains.has(saveKey(rowId, columnId));
-}
-
-function decodedSavedValue(column, value) {
-  return column.baseType === "ChoiceList" ? normalizeChoiceList(value) : value;
-}
-
-function valuesEqual(column, currentValue, nextValue) {
-  if (column.baseType === "ChoiceList") {
-    return JSON.stringify(normalizeChoiceList(currentValue)) ===
-      JSON.stringify(normalizeChoiceList(nextValue));
-  }
-  return Object.is(currentValue, nextValue);
-}
-
-function saveValue(rowId, column, value) {
+function queueSave(rowId, column, value) {
   if (column.isFormula || rowId == null || rowId === "new") {
     return Promise.resolve();
   }
 
   const key = saveKey(rowId, column.colId);
-  if (state.lastQueuedValues.has(key) &&
-      valuesEqual(column, state.lastQueuedValues.get(key), value)) {
-    return state.saveChains.get(key) || Promise.resolve();
+  const pending = state.saveChains.get(key);
+  if (pending && queuedValuesEqual(column, state.lastQueuedValues.get(key), value)) {
+    return pending;
   }
-  if (!state.saveChains.has(key) && state.record?.id === rowId &&
-      valuesEqual(column, state.record[column.colId], value)) {
+  if (!pending && state.record?.id === rowId &&
+      recordValueEquals(column, state.record[column.colId], value)) {
     setStatus("Saved");
     return Promise.resolve();
   }
 
+  const previous = pending || Promise.resolve();
+  let chain;
   state.lastQueuedValues.set(key, value);
-  const previous = state.saveChains.get(key) || Promise.resolve();
-  const save = previous.then(async () => {
-    if (state.record?.id === rowId) {
-      setStatus("Saving…");
-    }
-
+  setStatus("Saving…");
+  chain = previous.catch(() => undefined).then(async () => {
+    state.activeSaves += 1;
     try {
       await grist.selectedTable.update({
         id: rowId,
         fields: { [column.colId]: value }
       });
-
-      const savedValue = decodedSavedValue(column, value);
+      const decoded = decodedSavedValue(column, value);
       if (state.record?.id === rowId) {
-        state.record[column.colId] = savedValue;
-        setStatus("Saved");
+        state.record[column.colId] = decoded;
       }
       if (state.fullRecordCache?.rowId === rowId) {
-        state.fullRecordCache.record[column.colId] = savedValue;
+        state.fullRecordCache.record[column.colId] = decoded;
         state.fullRecordCache.fetchedAt = Date.now();
       }
+      if (state.renderedRecordId === rowId) {
+        const entry = state.controls.get(column.colId);
+        if (entry) {
+          entry.rawValue = decoded;
+        }
+      }
+      setStatus("Saved");
     } catch (error) {
       console.error(`Could not save ${column.colId}`, error);
-      if (state.record?.id === rowId) {
-        setStatus(`Could not save ${column.label}: ${error.message || error}`, true);
-      }
+      setStatus(`Could not save ${column.label}: ${error.message || error}`, true);
+    } finally {
+      state.activeSaves -= 1;
     }
-  });
-
-  state.saveChains.set(key, save);
-  void save.finally(() => {
-    if (state.saveChains.get(key) === save) {
+  }).finally(() => {
+    if (state.saveChains.get(key) === chain) {
       state.saveChains.delete(key);
       state.lastQueuedValues.delete(key);
     }
   });
-  return save;
+  state.saveChains.set(key, chain);
+  return chain;
 }
 
-async function flushPendingSaves(rowId = state.record?.id) {
+async function flushPendingSaves(rowId) {
+  if (rowId == null) {
+    return;
+  }
   const scheduled = Array.from(state.timers.values()).filter(save => save.rowId === rowId);
-
   for (const save of scheduled) {
     window.clearTimeout(save.timeout);
     state.timers.delete(save.column.colId);
+    queueSave(save.rowId, save.column, save.value);
   }
+  const prefix = `${rowId}\u0000`;
+  const active = Array.from(state.saveChains.entries())
+    .filter(([key]) => key.startsWith(prefix))
+    .map(([, promise]) => promise);
+  await Promise.allSettled(active);
+}
 
-  const newlyQueued = scheduled.map(save =>
-    saveValue(save.rowId, save.column, save.value)
-  );
-  const alreadyQueued = Array.from(state.saveChains.entries())
-    .filter(([key]) => key.startsWith(`${String(rowId)}\u0000`))
-    .map(([, save]) => save);
-  await Promise.allSettled([...alreadyQueued, ...newlyQueued]);
+function decodedSavedValue(column, value) {
+  if (column.baseType === "ChoiceList") {
+    return Array.isArray(value) && value[0] === "L" ? value.slice(1).map(String) : [];
+  }
+  return value;
+}
+
+function queuedValuesEqual(column, current, next) {
+  if (column.baseType === "ChoiceList") {
+    return JSON.stringify(decodedSavedValue(column, current)) ===
+      JSON.stringify(decodedSavedValue(column, next));
+  }
+  return Object.is(current, next);
+}
+
+function recordValueEquals(column, current, queued) {
+  if (column.baseType === "ChoiceList") {
+    return JSON.stringify(normalizeChoiceList(current)) ===
+      JSON.stringify(decodedSavedValue(column, queued));
+  }
+  return Object.is(current, queued);
 }
 
 function timestampMilliseconds(value) {
@@ -1285,265 +1216,43 @@ function timestampMilliseconds(value) {
   if (typeof value === "number") {
     return value * 1000;
   }
-
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function dateInputValue(value, column) {
+function dateInputValue(value) {
   const milliseconds = timestampMilliseconds(value);
-  if (milliseconds == null) {
-    return "";
-  }
-  ensureDateLibraries();
-  return moment.utc(milliseconds).format(fullDateFormat(column));
-}
-
-function dateFormat(column) {
-  const format = column?.options?.dateFormat;
-  return typeof format === "string" && format ? format : "YYYY-MM-DD";
-}
-
-// Adapted from grist-core's DateEditor. A complete format keeps the datepicker unambiguous.
-function makeFullMomentFormat(format) {
-  let safeFormat = format;
-  if (!safeFormat.includes("Y")) {
-    safeFormat += " YYYY";
-  }
-  if (!safeFormat.includes("D") || !safeFormat.includes("M")) {
-    safeFormat = "YYYY-MM-DD";
-  }
-  return safeFormat;
-}
-
-function fullDateFormat(column) {
-  return makeFullMomentFormat(dateFormat(column));
-}
-
-function ensureDateLibraries() {
-  if (typeof moment !== "function" || typeof moment.tz !== "function" ||
-      typeof $ !== "function" || typeof $.fn.datepicker !== "function") {
-    throw new Error("The date picker libraries could not be loaded.");
-  }
-  const requestedLocale = state.docSettings.locale || navigator.language || "en";
-  moment.locale([requestedLocale, requestedLocale.split("-")[0], "en"]);
-  const maxTwoDigitYear = new Date().getFullYear() + TWO_DIGIT_YEAR_THRESHOLD - 2000;
-  moment.parseTwoDigitYear = yearString => {
-    const year = Number.parseInt(yearString, 10);
-    return year + (year > maxTwoDigitYear ? 1900 : 2000);
-  };
-}
-
-function datePlaceholder(format) {
-  ensureDateLibraries();
-  return moment().format(format);
-}
-
-function parseDateInput(value, column) {
-  ensureDateLibraries();
-  const format = fullDateFormat(column);
-  const parsed = moment.utc(value, format, true);
-  if (!parsed.isValid()) {
-    throw new Error(`${column.label} must use the date format ${format}.`);
-  }
-  return parsed.valueOf() / 1000;
-}
-
-function currentDateLocale() {
-  const requested = state.docSettings.locale || navigator.language || "en";
-  const shortLocale = requested.split("-")[0];
-  if (AVAILABLE_DATEPICKER_LOCALES.has(requested)) {
-    return requested;
-  }
-  if (AVAILABLE_DATEPICKER_LOCALES.has(shortLocale)) {
-    return shortLocale;
-  }
-  return "en";
-}
-
-function loadDatePickerLocale(locale) {
-  if (locale === "en") {
-    return Promise.resolve(locale);
-  }
-  if (datepickerLocalePromises.has(locale)) {
-    return datepickerLocalePromises.get(locale);
-  }
-
-  const promise = new Promise(resolve => {
-    const script = document.createElement("script");
-    script.src = "https://cdn.jsdelivr.net/npm/bootstrap-datepicker@1.9.0/dist/locales/" +
-      `bootstrap-datepicker.${locale}.min.js`;
-    script.onload = () => resolve(locale);
-    script.onerror = () => {
-      console.warn(`Could not load the ${locale} datepicker locale; using English.`);
-      resolve("en");
-    };
-    document.head.appendChild(script);
-  });
-  datepickerLocalePromises.set(locale, promise);
-  return promise;
-}
-
-async function attachDatePicker(control, column, saveControl = control) {
-  ensureDateLibraries();
-  const format = fullDateFormat(column);
-  const locale = await loadDatePickerLocale(currentDateLocale());
-  if (!control.isConnected) {
-    return;
-  }
-
-  moment.locale(locale);
-  const datePickerWidget = $(control).datepicker({
-    keyboardNavigation: false,
-    forceParse: false,
-    todayHighlight: true,
-    todayBtn: "linked",
-    assumeNearbyYear: TWO_DIGIT_YEAR_THRESHOLD,
-    language: locale,
-    format: {
-      toDisplay: date => moment.utc(date).format(format),
-      toValue: date => {
-        try {
-          return new Date(parseDateInput(date, column) * 1000);
-        } catch (error) {
-          return null;
-        }
-      }
-    }
-  });
-  control.datePickerWidget = datePickerWidget;
-  state.datePickers.add(control);
-  const showDatePicker = () => datePickerWidget.datepicker("show");
-  control.addEventListener("focus", showDatePicker);
-  control.addEventListener("click", showDatePicker);
-  datePickerWidget.on("changeDate", () => saveFromControl(column, saveControl));
-  datePickerWidget.on("show", () => {
-    const datepickerElement = document.querySelector(".datepicker");
-    if (datepickerElement) {
-      datepickerElement.tabIndex = 0;
-      datepickerElement.classList.add("clipboard_allow_focus");
-    }
-  });
-  if (document.activeElement === control) {
-    showDatePicker();
-  }
-}
-
-function destroyDatePickers() {
-  for (const control of state.datePickers) {
-    control.datePickerWidget?.datepicker("destroy");
-    control.datePickerWidget = null;
-  }
-  state.datePickers.clear();
+  return milliseconds == null ? "" : moment.utc(milliseconds).format("YYYY-MM-DD");
 }
 
 function dateTimeZone(column) {
-  return String(column.type).startsWith("DateTime:")
-    ? String(column.type).slice("DateTime:".length) || "UTC"
-    : state.docSettings.timezone || "UTC";
+  if (String(column.type).startsWith("DateTime:")) {
+    return String(column.type).slice("DateTime:".length) || "UTC";
+  }
+  return state.docSettings.timezone || "UTC";
 }
 
-function timeFormat(column) {
-  return column.options.timeFormat === undefined ? "h:mma" : column.options.timeFormat;
-}
-
-function dateTimeParts(value, column) {
+function dateTimeInputValue(value, column) {
   const milliseconds = timestampMilliseconds(value);
-  if (milliseconds == null) {
-    return { date: "", time: "" };
-  }
-  const valueMoment = moment.tz(milliseconds, dateTimeZone(column));
-  return {
-    date: valueMoment.format(fullDateFormat(column)),
-    time: valueMoment.format(timeFormat(column))
-  };
+  return milliseconds == null
+    ? ""
+    : moment.tz(milliseconds, dateTimeZone(column)).format("YYYY-MM-DDTHH:mm:ss");
 }
 
-function parseDateTimeControl(control, column) {
-  const date = control.dateInput.value;
-  const time = control.timeInput.value;
-  const configuredTimeFormat = timeFormat(column);
-  if (!date && !time) {
-    return null;
-  }
-  if (!date || (configuredTimeFormat && !time)) {
-    throw new Error(`${column.label} must contain both a date and a time.`);
-  }
-  const format = `${fullDateFormat(column)} ${configuredTimeFormat}`.trim();
-  const text = `${date} ${time}`.trim();
-  const parsed = moment.tz(text, format, true, dateTimeZone(column));
-  if (!parsed.isValid()) {
-    throw new Error(`${column.label} must use the format ${format}.`);
-  }
-  return validTimestamp(parsed.valueOf() / 1000, column);
-}
-
-function reconcileChoice(control, column, value) {
-  const input = controlInput(control);
-  const nextValue = value == null ? "" : String(value);
-
-  for (const option of control.choiceMenu.querySelectorAll(".choice-single-option")) {
-    if (option.dataset.configured === "false" && option.dataset.value !== nextValue) {
-      option.remove();
-    }
-  }
-  if (nextValue && !Array.from(control.choiceMenu.querySelectorAll(".choice-single-option"))
-    .some(option => option.dataset.value === nextValue)) {
-    appendSingleChoiceOption(control, column, nextValue, false);
-  }
-  input.value = nextValue;
-  for (const option of control.choiceMenu.querySelectorAll(".choice-single-option")) {
-    option.setAttribute("aria-selected", String(option.dataset.value === nextValue));
-  }
-  updateChoiceDisplay(control, column, nextValue);
-}
-
-function reconcileChoiceList(control, column, value) {
-  const selected = new Set(normalizeChoiceList(value));
-
-  for (const option of Array.from(control.querySelectorAll(".choice-option"))) {
-    const checkbox = option.querySelector("input");
-    if (option.dataset.configured === "false" && !selected.has(checkbox.value)) {
-      option.remove();
-    }
-  }
-  const existing = new Set(
-    Array.from(control.querySelectorAll(".choice-option input"), checkbox => checkbox.value)
-  );
-  const configured = new Set(configuredChoices(column));
-  for (const choice of selected) {
-    if (!existing.has(choice)) {
-      appendChoiceMenuOption(control, column, choice, true, configured.has(choice));
-    }
-  }
-  for (const checkbox of control.querySelectorAll(".choice-option input")) {
-    checkbox.checked = selected.has(checkbox.value);
-  }
-
-  const emptyMessage = control.choiceMenu.querySelector(".empty-choice-list");
-  if (emptyMessage && control.querySelector(".choice-option")) {
-    emptyMessage.remove();
-  } else if (!emptyMessage && !control.querySelector(".choice-option")) {
-    control.choiceMenu.appendChild(element("span", {
-      className: "empty-choice-list",
-      textContent: "No choices configured"
-    }));
-  }
-  rebuildChoiceListDisplay(control, column);
+function hasPendingSave(rowId, columnId) {
+  return state.timers.has(columnId) || state.saveChains.has(saveKey(rowId, columnId));
 }
 
 function reconcileControls(record) {
-  for (const [columnId, { control, column }] of state.controls) {
-    if (state.timers.has(columnId) || hasPendingSave(record.id, columnId)) {
+  for (const [columnId, entry] of state.controls) {
+    const { column, control, valueElement } = entry;
+    applyCellStyle(valueElement, control, column, record);
+    if (hasPendingSave(record.id, columnId) || control.contains(document.activeElement)) {
       continue;
     }
-
-    const input = controlInput(control);
-    if (input === document.activeElement || control.contains(document.activeElement)) {
-      continue;
-    }
-
     const value = record[columnId];
+    entry.rawValue = value;
+    const input = controlInput(control);
     switch (column.baseType) {
       case "Text":
         input.value = value == null ? "" : String(value);
@@ -1552,27 +1261,22 @@ function reconcileControls(record) {
       case "Numeric":
       case "Int":
         input.value = formatNumber(value, column);
+        input.setAttribute("aria-invalid", "false");
         break;
       case "Bool":
         input.checked = Boolean(value);
         break;
       case "Date":
-        input.value = dateInputValue(value, column);
-        control.datePickerWidget?.datepicker("update", input.value);
+        input.value = dateInputValue(value);
         break;
       case "DateTime":
-        {
-          const parts = dateTimeParts(value, column);
-          control.dateInput.value = parts.date;
-          control.timeInput.value = parts.time;
-          control.dateInput.datePickerWidget?.datepicker("update", parts.date);
-        }
+        input.value = dateTimeInputValue(value, column);
         break;
       case "Choice":
-        reconcileChoice(control, column, value);
+        rebuildChoice(input, column, value);
         break;
       case "ChoiceList":
-        reconcileChoiceList(control, column, value);
+        rebuildChoiceList(control, column, value);
         break;
     }
   }
@@ -1596,6 +1300,10 @@ async function handleRecord(incomingRecord, mappings) {
     showEmptyPanel();
     return;
   }
+
+  // A record notification may be the result of a conditional formula changing.
+  // Start it with a fresh full-record snapshot rather than a one-second-old one.
+  state.fullRecordCache = null;
   if (!mapping) {
     state.record = incomingRecord;
     state.mapping = null;
@@ -1608,7 +1316,6 @@ async function handleRecord(incomingRecord, mappings) {
     if (eventSequence !== state.eventSequence) {
       return;
     }
-
     const mappingColumn = metadata.get(mapping);
     if (!mappingColumn) {
       throw new Error(`The mapped Fields column "${mapping}" does not exist in the linked table.`);
@@ -1620,18 +1327,22 @@ async function handleRecord(incomingRecord, mappings) {
     let record = await includeColumns(incomingRecord, [mapping]);
     const fieldIds = parseFieldList(record[mapping]);
     const fields = resolveFields(fieldIds, metadata);
-    record = await includeColumns(record, fields.map(field => field.colId));
+    record = await includeColumns(record, fields.flatMap(field => [
+      field.colId,
+      ...field.ruleColumnIds
+    ]));
     if (eventSequence !== state.eventSequence) {
       return;
     }
 
     const definitionKey = JSON.stringify(fields.map(field => [
       field.colId,
-      field.type,
       field.label,
       field.description,
+      field.type,
       field.isFormula,
-      field.options
+      field.options,
+      field.ruleColumnIds
     ]));
     const canReconcile = state.renderedRecordId === record.id &&
       state.mapping === mapping && state.definitionKey === definitionKey;
@@ -1639,7 +1350,6 @@ async function handleRecord(incomingRecord, mappings) {
     state.record = record;
     state.mapping = mapping;
     state.metadata = metadata;
-
     if (!fields.length) {
       showEmptyPanel();
       state.renderedRecordId = record.id;
@@ -1647,9 +1357,9 @@ async function handleRecord(incomingRecord, mappings) {
     } else if (canReconcile) {
       reconcileControls(record);
     } else {
+      renderCard(record, fields);
       state.renderedRecordId = record.id;
       state.definitionKey = definitionKey;
-      renderCard(record, fields);
     }
   } catch (error) {
     state.record = incomingRecord;
@@ -1658,43 +1368,51 @@ async function handleRecord(incomingRecord, mappings) {
   }
 }
 
-grist.onRecord((record, mappings) => {
-  void handleRecord(record, mappings);
-});
+function startWidget() {
+  if (typeof grist === "undefined") {
+    throw new Error("Grist's Custom Widget API could not be loaded.");
+  }
 
-grist.onNewRecord(() => {
-  const previousRowId = state.record?.id;
-  const eventSequence = ++state.eventSequence;
-
-  void flushPendingSaves(previousRowId).finally(() => {
-    if (eventSequence !== state.eventSequence) {
-      return;
-    }
-    state.record = null;
-    showEmptyPanel();
+  grist.onRecord((record, mappings) => {
+    void handleRecord(record, mappings);
   });
-});
+
+  grist.onNewRecord(mappings => {
+    const previousRowId = state.record?.id;
+    const eventSequence = ++state.eventSequence;
+    void flushPendingSaves(previousRowId).finally(() => {
+      if (eventSequence !== state.eventSequence) {
+        return;
+      }
+      state.record = null;
+      state.mapping = normalizeMapping(mappings?.[FIELDS_MAPPING]);
+      showEmptyPanel();
+    });
+  });
+
+  grist.ready({
+    requiredAccess: "full",
+    columns: [
+      {
+        name: FIELDS_MAPPING,
+        title: "Fields",
+        type: "ChoiceList",
+        optional: false,
+        allowMultiple: false,
+        description: "A Choice List containing the column IDs to show in this record's card."
+      }
+    ]
+  });
+}
 
 window.addEventListener("resize", resizeTextControls);
-document.addEventListener("pointerdown", event => {
-  for (const control of document.querySelectorAll(".choice-control.open, .choice-list.open")) {
-    if (!control.contains(event.target)) {
-      control.classList.remove("open");
-      control.choiceDisplay?.setAttribute("aria-expanded", "false");
-    }
-  }
+window.addEventListener("beforeunload", () => {
+  void flushPendingSaves(state.record?.id);
 });
 
-grist.ready({
-  requiredAccess: "full",
-  columns: [
-    {
-      name: FIELDS_MAPPING,
-      title: "Fields",
-      type: "ChoiceList",
-      optional: false,
-      allowMultiple: false,
-      description: "A Choice List containing the column IDs to show in this record's card."
-    }
-  ]
-});
+try {
+  startWidget();
+} catch (error) {
+  console.error("Dyncard could not start", error);
+  showAlert(`Dyncard could not start: ${error.message || error}`);
+}
