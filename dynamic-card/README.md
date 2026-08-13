@@ -2,6 +2,14 @@
 
 Dynamic Card is a framework-free Grist custom widget that turns a per-record list of column names into an editable card. Each record may therefore show a different subset of the linked table while all values remain in their original Grist columns.
 
+Use it by inserting the following link as the custom widget URL:
+
+```text
+https://emanuelegissi.github.io/my-grist-widget/dyncard
+```
+
+The widget requires full document access because its buttons may apply Grist UserActions.
+
 ## Features
 
 - Builds the card from a mapped Grist Choice List or a JSON array.
