@@ -216,7 +216,7 @@ textarea.control {
 
 /* viewCommon.css uses the same fallback when a conditional formula errors. */
 .control.field-error-from-style {
-  background-color: #ffb6c1;
+  background-color: #FD8182;
   color: #000;
   -webkit-text-fill-color: #000;
 }
@@ -229,11 +229,12 @@ textarea.control {
 }
 
 .g_record_detail_value:has([aria-invalid="true"]) {
-  background-color: #ffb6c1;
+  background-color: #FD8182;
   color: #000;
 }
 
 .g_record_detail_value:has([aria-invalid="true"]) .control {
+  background-color: #FD8182;
   color: #000;
 }
 

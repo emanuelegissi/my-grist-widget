@@ -5,12 +5,14 @@ Dyncard is a framework-free Grist custom widget that turns a per-record list of 
 ## Features
 
 - Builds the card from a mapped Grist Choice List.
+- Accepts an optional mapped Text column with per-record JSON options for the shown fields.
 - Accepts only column IDs.
 - Uses each column's Grist label, description, type, formula state, widget options, and document settings.
 - Applies Grist cell colors and font styles, including conditional cell rules for the current record.
 - Supports Text, Numeric, Int, Bool, Date, DateTime, Choice, and Choice List columns.
 - Uses Grist's field alignment defaults and numeric value formats.
 - Uses native browser controls for Bool, Date, DateTime, Choice, and Choice List fields.
+- Supports HTML datalist suggestions for Text, Numeric, Int, Date, and DateTime fields.
 - Saves edits automatically without a Save button.
 - Shows Grist's `=` indicator for formula columns and keeps their calculated values non-editable.
 - Shows configuration problems with an alert dialog.
@@ -18,10 +20,12 @@ Dyncard is a framework-free Grist custom widget that turns a per-record list of 
 ## Grist setup
 
 1. Add a Choice list column that defines which fields to show.
-2. Add Dyncard to the page and select the table containing that column.
-3. Link the widget to a record-selection widget if it should follow a selected row.
-4. In the widget configuration, map the definition column to **Fields**.
-5. Grant **Full document access** when Grist asks for permission.
+2. Optionally, add a Text column containing the JSON configuration described below.
+3. Add Dyncard to the page and select the table containing those columns.
+4. Link the widget to a record-selection widget if it should follow a selected row.
+5. In the widget configuration, map the definition column to **Fields** and, if used,
+   the JSON column to **Options**.
+6. Grant **Full document access** when Grist asks for permission.
 
 The widget edits existing records only. Selecting Grist's blank new-record row displays an empty panel.
 
@@ -29,11 +33,101 @@ The order in the **Fields** array is the order used in the card.
 
 Every listed column must exist. Missing fields, and unsupported column types produce a configuration alert. A blank list shows an empty panel.
 
+## Per-record options
+
+**Options** is an optional Text mapping. Each non-blank value must be a JSON object keyed by Grist
+column IDs. Options for IDs present in that record's **Fields** list are applied; all other entries
+are ignored. Labels are not accepted because they can change independently of column IDs.
+
+The supported field options are `datalist`, `pattern`, `placeholder`, `label`, `description`,
+`required`, `readonly`, `multiline`, and `default`:
+
+```json
+{
+  "Customer": {
+    "label": "Customer name",
+    "description": "The customer name used on invoices",
+    "placeholder": "Enter a customer",
+    "pattern": "[A-Za-z][A-Za-z .'-]+",
+    "required": true,
+    "default": "Acme",
+    "datalist": ["Acme", "Globex", "Initech"]
+  },
+  "Hours": {
+    "readonly": true,
+    "datalist": [0.5, 1, 4, 8]
+  },
+  "Notes": {
+    "multiline": true
+  },
+  "DueDate": {
+    "datalist": ["2026-08-31", "2026-09-30"]
+  },
+  "StartsAt": {
+    "datalist": ["2026-08-31T09:00", "2026-08-31T14:00"]
+  }
+}
+```
+
+| Option | Value | Behavior |
+| --- | --- | --- |
+| `datalist` | Array of strings or numbers | Provides native browser suggestions without restricting other valid input. |
+| `pattern` | String | Requires the entire entered value to match the regular expression. |
+| `placeholder` | String | Sets the empty-input hint. For Choice fields it labels the empty option. |
+| `label` | String | Replaces the visible Grist field label and the control's accessible name. |
+| `description` | String | Replaces the Grist field description shown in the info tooltip. An empty string removes the tooltip. |
+| `required` | Boolean | Requires a non-empty value. A required Bool must be checked. |
+| `readonly` | Boolean | Prevents the field from being edited or saved by Dyncard. |
+| `multiline` | Boolean | Selects an expanding textarea (`true`) or one-line input (`false`) for Text fields. |
+| `default` | Type-appropriate value | Prefills an empty field as a proposal without writing it automatically. |
+
+`pattern` is available for Text, Numeric, Int, Date, DateTime, and Choice. Pattern matching follows
+HTML's whole-value behavior. Numeric patterns are matched against the locale-aware editing value;
+Date and DateTime patterns see the native input value. Empty values are checked by `required`, not
+by `pattern`.
+
+`placeholder` is available for the same field types as `pattern`. Native Date and DateTime controls
+may choose not to display placeholder text.
+
+`required` is available for every supported field type. If a required value is empty, or a value
+does not match its configured pattern, Dyncard sets the input background to `#FD8182`, reports the
+validation error, cancels any pending autosave, and does not write the value to Grist. Validation is
+also reflected through `aria-invalid` and `aria-required`.
+
+`readonly` is available for every supported field type. Text, Numeric, Int, Date, and DateTime use
+native readonly controls. Bool, Choice, and ChoiceList use disabled controls because HTML does not
+provide a readonly state for them. Dyncard also blocks readonly fields in its save pipeline.
+
+`default` must use the field's data type: a string for Text and Choice, a number for Numeric, an
+integer for Int, a boolean for Bool, and an array of strings for ChoiceList. Date and DateTime accept
+either a Unix timestamp in seconds or a native-format string. A default is shown only while the
+stored value is empty and is saved only after the user accepts or changes the control. Since Grist
+Bool values normally always contain `true` or `false`, a Bool default is used only if the received
+value is actually null. Formula fields cannot use `default` because their calculated values are
+read-only.
+
+`datalist` is available for Text, Numeric, Int, Date, and DateTime fields and is implemented with
+the native HTML `datalist` element. Suggestions do not constrain input: a user may still enter any
+valid value. Numeric JSON numbers are converted to the document locale. Numeric strings should use
+that locale. Date and DateTime strings should use the native input formats `YYYY-MM-DD` and
+`YYYY-MM-DDTHH:mm[:ss]`; numeric values are treated as Unix timestamps in seconds.
+
+Text fields normally retain Dyncard's expanding multiline editor. Because HTML does not support a
+`datalist` on `textarea`, a Text field configured with `datalist` uses a one-line text input.
+`multiline: false` also selects the one-line input. Explicit `multiline: true` cannot be combined
+with `datalist` and produces a configuration alert.
+
+Configurations for columns absent from the current record's **Fields** list are ignored. This allows
+one Options object to contain settings for every field that a record might display. For fields that
+are present, malformed JSON, unsupported option names or field types, invalid patterns or defaults,
+and non-array `datalist` values produce a configuration alert. An empty Options cell is the same as
+`{}`.
+
 ## Supported field types
 
 | Grist type | Card control | Empty value |
 | --- | --- | --- |
-| Text | One-row textarea that expands with its content | Empty string |
+| Text | Expanding textarea by default; one-line input with `multiline: false` or `datalist` | Empty string |
 | Numeric | Locale-aware Grist numeric editor and formatter | `null` |
 | Int | Locale-aware Grist integer editor and formatter | `null` |
 | Bool | Native checkbox input | `false` |

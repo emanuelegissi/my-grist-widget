@@ -21,6 +21,7 @@
 
 const AUTOSAVE_DELAY_MS = 350;
 const FIELDS_MAPPING = "Fields";
+const OPTIONS_MAPPING = "Options";
 const SUPPORTED_TYPES = new Set([
   "Text",
   "Numeric",
@@ -30,6 +31,20 @@ const SUPPORTED_TYPES = new Set([
   "DateTime",
   "Choice",
   "ChoiceList"
+]);
+const DATALIST_TYPES = new Set(["Text", "Numeric", "Int", "Date", "DateTime"]);
+const PATTERN_TYPES = new Set(["Text", "Numeric", "Int", "Date", "DateTime", "Choice"]);
+const PLACEHOLDER_TYPES = new Set(["Text", "Numeric", "Int", "Date", "DateTime", "Choice"]);
+const FIELD_OPTION_NAMES = new Set([
+  "datalist",
+  "pattern",
+  "placeholder",
+  "label",
+  "description",
+  "required",
+  "readonly",
+  "multiline",
+  "default"
 ]);
 const DEFAULT_ALIGNMENTS = Object.freeze({
   Text: "left",
@@ -91,6 +106,7 @@ const app = document.getElementById("app");
 const state = {
   record: null,
   mapping: null,
+  optionsMapping: null,
   tableId: null,
   metadata: new Map(),
   docSettings: {
@@ -217,6 +233,168 @@ function parseFieldList(value) {
     throw new Error(`Fields contains the duplicate column ID "${duplicate}".`);
   }
   return fieldIds;
+}
+
+function parseCardOptions(value, fields) {
+  if (value == null || value === "" || (typeof value === "string" && value.trim() === "")) {
+    return {};
+  }
+
+  let parsed = value;
+  if (typeof value === "string") {
+    try {
+      parsed = JSON.parse(value);
+    } catch (error) {
+      throw new Error(`The mapped Options column must contain valid JSON: ${error.message}`);
+    }
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("The mapped Options column must contain a JSON object keyed by column ID.");
+  }
+
+  const fieldsById = new Map(fields.map(field => [field.colId, field]));
+  const result = Object.create(null);
+  for (const [columnId, options] of Object.entries(parsed)) {
+    const column = fieldsById.get(columnId);
+    if (!column) {
+      continue;
+    }
+    if (!options || typeof options !== "object" || Array.isArray(options)) {
+      throw new Error(`Options for "${columnId}" must be a JSON object.`);
+    }
+
+    const unsupportedOption = Object.keys(options).find(name => !FIELD_OPTION_NAMES.has(name));
+    if (unsupportedOption) {
+      throw new Error(`Option "${unsupportedOption}" is not supported for "${columnId}".`);
+    }
+
+    for (const optionName of ["pattern", "placeholder", "label", "description"]) {
+      if (Object.prototype.hasOwnProperty.call(options, optionName) &&
+          typeof options[optionName] !== "string") {
+        throw new Error(`Option "${optionName}" for "${columnId}" must be a string.`);
+      }
+    }
+    for (const optionName of ["required", "readonly", "multiline"]) {
+      if (Object.prototype.hasOwnProperty.call(options, optionName) &&
+          typeof options[optionName] !== "boolean") {
+        throw new Error(`Option "${optionName}" for "${columnId}" must be true or false.`);
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(options, "multiline") &&
+        column.baseType !== "Text") {
+      throw new Error(
+        `Option "multiline" is only supported for Text fields, not "${columnId}".`
+      );
+    }
+    if (options.multiline === true &&
+        Object.prototype.hasOwnProperty.call(options, "datalist")) {
+      throw new Error(
+        `Options "multiline" and "datalist" cannot be combined for "${columnId}".`
+      );
+    }
+    if (Object.prototype.hasOwnProperty.call(options, "pattern")) {
+      if (!PATTERN_TYPES.has(column.baseType)) {
+        throw new Error(
+          `Option "pattern" is not supported for ${column.baseType} field "${column.label}" ` +
+          `(${columnId}).`
+        );
+      }
+      try {
+        new RegExp(options.pattern, "u");
+      } catch (error) {
+        throw new Error(`Option "pattern" for "${columnId}" is not a valid pattern.`);
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(options, "placeholder") &&
+        !PLACEHOLDER_TYPES.has(column.baseType)) {
+      throw new Error(
+        `Option "placeholder" is not supported for ${column.baseType} field "${column.label}" ` +
+        `(${columnId}).`
+      );
+    }
+    if (Object.prototype.hasOwnProperty.call(options, "default")) {
+      if (column.isFormula) {
+        throw new Error(`Option "default" is not supported for formula field "${columnId}".`);
+      }
+      validateDefaultOption(column, options.default);
+    }
+    if (Object.prototype.hasOwnProperty.call(options, "datalist")) {
+      if (!DATALIST_TYPES.has(column.baseType)) {
+        throw new Error(
+          `Option "datalist" is not supported for ${column.baseType} field "${column.label}" ` +
+          `(${columnId}).`
+        );
+      }
+      if (!Array.isArray(options.datalist)) {
+        throw new Error(`Option "datalist" for "${columnId}" must be a JSON array.`);
+      }
+      const invalidIndex = options.datalist.findIndex(item =>
+        item == null || (typeof item !== "string" && typeof item !== "number")
+      );
+      if (invalidIndex >= 0) {
+        throw new Error(
+          `Item ${invalidIndex + 1} in the datalist for "${columnId}" must be a string or number.`
+        );
+      }
+    }
+    result[columnId] = { ...options };
+  }
+  return result;
+}
+
+function validateDefaultOption(column, value) {
+  const error = () => {
+    throw new Error(
+      `Option "default" for "${column.colId}" is not valid for a ${column.baseType} field.`
+    );
+  };
+
+  switch (column.baseType) {
+    case "Text":
+    case "Choice":
+      if (typeof value !== "string") {
+        error();
+      }
+      break;
+    case "Numeric":
+      if (typeof value !== "number" || !Number.isFinite(value)) {
+        error();
+      }
+      break;
+    case "Int":
+      if (!Number.isInteger(value)) {
+        error();
+      }
+      break;
+    case "Bool":
+      if (typeof value !== "boolean") {
+        error();
+      }
+      break;
+    case "Date":
+      if (!(typeof value === "number" && Number.isFinite(value)) &&
+          !(typeof value === "string" &&
+            moment.utc(value, "YYYY-MM-DD", true).isValid())) {
+        error();
+      }
+      break;
+    case "DateTime":
+      if (!(typeof value === "number" && Number.isFinite(value)) &&
+          !(typeof value === "string" &&
+            moment(value, [
+              "YYYY-MM-DDTHH:mm",
+              "YYYY-MM-DDTHH:mm:ss",
+              "YYYY-MM-DDTHH:mm:ss.SSS"
+            ], true).isValid())) {
+        error();
+      }
+      break;
+    case "ChoiceList":
+      if (!Array.isArray(value) || value.some(item => typeof item !== "string")) {
+        error();
+      }
+      break;
+  }
 }
 
 function baseType(type) {
@@ -530,6 +708,13 @@ function resolveFields(fieldIds, metadata) {
   });
 }
 
+function configureFields(fields, cardOptions) {
+  return fields.map(column => ({
+    ...column,
+    cardOptions: cardOptions[column.colId] || {}
+  }));
+}
+
 function decodeCellValue(value) {
   if (Array.isArray(value) && value[0] === "L") {
     return value.slice(1);
@@ -737,23 +922,84 @@ function inputId(columnId, index) {
   return `dyncard-${index}-${columnId.replace(/[^A-Za-z0-9_-]/g, "_")}`;
 }
 
+function fieldLabel(column) {
+  return Object.prototype.hasOwnProperty.call(column.cardOptions || {}, "label")
+    ? column.cardOptions.label
+    : column.label;
+}
+
+function fieldDescription(column) {
+  return Object.prototype.hasOwnProperty.call(column.cardOptions || {}, "description")
+    ? column.cardOptions.description
+    : column.description;
+}
+
+function configuredPlaceholder(column) {
+  return column.cardOptions?.placeholder;
+}
+
+function fieldIsReadonly(column) {
+  return Boolean(column.cardOptions?.readonly);
+}
+
+function fieldIsLocked(column) {
+  return column.isFormula || fieldIsReadonly(column);
+}
+
+function storedValueIsEmpty(column, value) {
+  switch (column.baseType) {
+    case "Text":
+    case "Choice":
+      return value == null || value === "";
+    case "Numeric":
+    case "Int":
+    case "Date":
+    case "DateTime":
+      return value == null || value === "";
+    case "Bool":
+      return value == null;
+    case "ChoiceList":
+      return normalizeChoiceList(value).length === 0;
+    default:
+      return value == null;
+  }
+}
+
+function proposedFieldValue(column, storedValue) {
+  const hasDefault = Object.prototype.hasOwnProperty.call(column.cardOptions || {}, "default");
+  if (hasDefault && storedValueIsEmpty(column, storedValue)) {
+    return { value: column.cardOptions.default, isDefault: true };
+  }
+  return { value: storedValue, isDefault: false };
+}
+
+function dateControlValue(column, proposed) {
+  if (proposed.isDefault && typeof proposed.value === "string") {
+    return proposed.value;
+  }
+  return column.baseType === "Date"
+    ? dateInputValue(proposed.value)
+    : dateTimeInputValue(proposed.value, column);
+}
+
 function makeLabel(column, id) {
+  const description = fieldDescription(column);
   const container = element("div", { className: "g_record_detail_label_container" }, [
     element("label", {
       className: "g_record_detail_label",
       htmlFor: id,
-      textContent: column.label
+      textContent: fieldLabel(column)
     })
   ]);
 
-  if (column.description) {
+  if (description) {
     // Native title tooltip by design; no custom tooltip lifecycle or popup.
     container.appendChild(element("span", {
       className: "info",
-      title: column.description,
+      title: description,
       role: "img",
       tabIndex: 0,
-      ariaLabel: column.description
+      ariaLabel: description
     }, [element("span", { className: "info_toggle_icon", ariaHidden: "true" })]));
   }
   return container;
@@ -764,23 +1010,75 @@ function commonControl(column, id, className = "field_clip control") {
     id,
     className,
     disabled: column.isFormula,
-    ariaLabel: column.label
+    ariaLabel: fieldLabel(column),
+    ariaRequired: Boolean(column.cardOptions?.required),
+    ariaReadonly: fieldIsReadonly(column)
   };
 }
 
-function createControl(column, value, id) {
+function hasDatalist(column) {
+  return Object.prototype.hasOwnProperty.call(column.cardOptions || {}, "datalist");
+}
+
+function textIsMultiline(column) {
+  if (Object.prototype.hasOwnProperty.call(column.cardOptions || {}, "multiline")) {
+    return column.cardOptions.multiline;
+  }
+  return !hasDatalist(column);
+}
+
+function datalistValue(column, value) {
+  if (typeof value === "string") {
+    return value;
+  }
+  switch (column.baseType) {
+    case "Numeric":
+    case "Int":
+      return numericEditValue(value);
+    case "Date":
+      return dateInputValue(value);
+    case "DateTime":
+      return dateTimeInputValue(value, column);
+    default:
+      return String(value);
+  }
+}
+
+function createDatalist(column, control, id) {
+  if (!hasDatalist(column)) {
+    return null;
+  }
+  const listId = `${id}-datalist`;
+  control.setAttribute("list", listId);
+  return element("datalist", { id: listId }, column.cardOptions.datalist.map(value =>
+    element("option", { value: datalistValue(column, value) })
+  ));
+}
+
+function createControl(column, proposed, id) {
+  const value = proposed.value;
+  const placeholder = configuredPlaceholder(column);
+  const required = Boolean(column.cardOptions?.required);
+  const readonly = fieldIsReadonly(column);
   let control;
   switch (column.baseType) {
-    case "Text":
-      control = element("textarea", {
+    case "Text": {
+      const multiline = textIsMultiline(column);
+      control = element(multiline ? "textarea" : "input", {
         ...commonControl(column, id),
+        type: multiline ? undefined : "text",
         rows: 1,
         value: value == null ? "" : String(value),
-        spellcheck: true
+        spellcheck: true,
+        autocomplete: "off",
+        placeholder,
+        required,
+        readOnly: readonly
       });
       bindTypedControl(control, column);
       queueMicrotask(() => resizeTextArea(control));
       break;
+    }
 
     case "Numeric":
     case "Int":
@@ -789,7 +1087,10 @@ function createControl(column, value, id) {
         type: "text",
         inputMode: column.baseType === "Int" ? "numeric" : "decimal",
         value: formatNumber(value, column),
-        autocomplete: "off"
+        autocomplete: "off",
+        placeholder,
+        required,
+        readOnly: readonly
       });
       bindNumericControl(control, column);
       break;
@@ -802,7 +1103,10 @@ function createControl(column, value, id) {
       control = element("input", {
         ...commonControl(column, id, "control"),
         type: "date",
-        value: dateInputValue(value)
+        value: dateControlValue(column, proposed),
+        placeholder,
+        required,
+        readOnly: readonly
       });
       bindImmediateControl(control, column);
       break;
@@ -812,13 +1116,20 @@ function createControl(column, value, id) {
         ...commonControl(column, id, "control"),
         type: "datetime-local",
         step: "1",
-        value: dateTimeInputValue(value, column)
+        value: dateControlValue(column, proposed),
+        placeholder,
+        required,
+        readOnly: readonly
       });
       bindImmediateControl(control, column);
       break;
 
     case "Choice":
-      control = element("select", commonControl(column, id, "control"));
+      control = element("select", {
+        ...commonControl(column, id, "control"),
+        required,
+        disabled: fieldIsLocked(column)
+      });
       rebuildChoice(control, column, value);
       bindImmediateControl(control, column);
       break;
@@ -828,11 +1139,17 @@ function createControl(column, value, id) {
         id,
         className: "control choice-list-control",
         role: "group",
-        ariaLabel: column.label,
-        ariaDisabled: column.isFormula
+        ariaLabel: fieldLabel(column),
+        ariaDisabled: fieldIsLocked(column),
+        ariaRequired: required,
+        ariaReadonly: readonly
       });
       rebuildChoiceList(control, column, value);
       break;
+  }
+  if (Object.prototype.hasOwnProperty.call(column.cardOptions || {}, "pattern") &&
+      (control.tagName === "INPUT" || control.tagName === "TEXTAREA")) {
+    control.setAttribute("pattern", column.cardOptions.pattern);
   }
   control.dataset.gristType = column.baseType;
   applyAlignment(control, column);
@@ -845,20 +1162,26 @@ function createBoolControl(column, value, id) {
     className: "native-checkbox",
     type: "checkbox",
     checked: Boolean(value),
-    disabled: column.isFormula,
-    ariaLabel: column.label
+    disabled: fieldIsLocked(column),
+    required: Boolean(column.cardOptions?.required),
+    ariaLabel: fieldLabel(column),
+    ariaReadonly: fieldIsReadonly(column)
   });
   const control = element("div", {
     className: "field_clip control bool-control"
   }, [input]);
   control.valueInput = input;
   input.addEventListener("change", () => saveFromControl(column, control));
+  input.addEventListener("blur", () => saveFromControl(column, control));
   return control;
 }
 
 function rebuildChoice(select, column, value) {
   const current = value == null ? "" : String(value);
-  const options = [element("option", { value: "", textContent: "" })];
+  const options = [element("option", {
+    value: "",
+    textContent: configuredPlaceholder(column) || ""
+  })];
   for (const choice of allChoiceValues(column, value)) {
     options.push(element("option", {
       value: choice,
@@ -887,10 +1210,11 @@ function rebuildChoiceList(control, column, value) {
       type: "checkbox",
       value: choice,
       checked: selected.has(choice),
-      disabled: column.isFormula,
+      disabled: fieldIsLocked(column),
       ariaLabel: choice
     });
     checkbox.addEventListener("change", () => saveFromControl(column, control));
+    checkbox.addEventListener("blur", () => saveFromControl(column, control));
     children.push(element("label", { className: "choice-option" }, [
       checkbox,
       element("span", { textContent: choice })
@@ -910,6 +1234,9 @@ function bindTypedControl(control, column) {
 
 function bindNumericControl(control, column) {
   control.addEventListener("focus", () => {
+    if (fieldIsLocked(column)) {
+      return;
+    }
     const entry = state.controls.get(column.colId);
     if (entry && control.getAttribute("aria-invalid") !== "true") {
       control.value = numericEditValue(entry.rawValue);
@@ -929,6 +1256,7 @@ function bindNumericControl(control, column) {
 
 function bindImmediateControl(control, column) {
   control.addEventListener("change", () => saveFromControl(column, control));
+  control.addEventListener("blur", () => saveFromControl(column, control));
 }
 
 function renderCard(record, fields) {
@@ -941,14 +1269,20 @@ function renderCard(record, fields) {
 
   fields.forEach((column, index) => {
     const id = inputId(column.colId, index);
-    const control = createControl(column, record[column.colId], id);
+    const proposed = proposedFieldValue(column, record[column.colId]);
+    const control = createControl(column, proposed, id);
+    const datalist = createDatalist(column, control, id);
+    const valueChildren = [control];
+    if (datalist) {
+      valueChildren.push(datalist);
+    }
     const value = element("div", {
       className: column.isFormula
         ? "g_record_detail_value formula_field"
         : "g_record_detail_value"
     }, column.isFormula
-      ? [element("span", { className: "field-icon", ariaHidden: "true" }), control]
-      : [control]);
+      ? [element("span", { className: "field-icon", ariaHidden: "true" }), ...valueChildren]
+      : valueChildren);
     applyCellStyle(value, control, column, record);
     card.appendChild(element("div", {
       className: "g_record_detail_el detail_theme_field_form"
@@ -957,8 +1291,9 @@ function renderCard(record, fields) {
       column,
       control,
       valueElement: value,
-      rawValue: record[column.colId]
+      rawValue: proposed.value
     });
+    refreshControlValidity(column, control);
   });
 
   card.appendChild(element("div", {
@@ -974,7 +1309,7 @@ function controlInput(control) {
   return control.valueInput || control;
 }
 
-function readControl(column, control) {
+function readControlValue(column, control) {
   const input = controlInput(control);
   switch (column.baseType) {
     case "Text":
@@ -987,7 +1322,8 @@ function readControl(column, control) {
       const numeric = numberParser(column).parse(input.value);
       if (numeric === null || (column.baseType === "Int" && !Number.isInteger(numeric))) {
         throw new Error(
-          `${column.label} must be ${column.baseType === "Int" ? "an integer" : "a number"}.`
+          `${fieldLabel(column)} must be ` +
+          `${column.baseType === "Int" ? "an integer" : "a number"}.`
         );
       }
       return numeric;
@@ -1028,10 +1364,67 @@ function readControl(column, control) {
   }
 }
 
+function configuredValueIsEmpty(column, value) {
+  if (column.baseType === "Bool") {
+    return value !== true;
+  }
+  if (column.baseType === "ChoiceList") {
+    return !Array.isArray(value) || value.length <= 1;
+  }
+  return value == null || value === "";
+}
+
+function patternValue(column, control, value) {
+  if (column.baseType === "Numeric" || column.baseType === "Int") {
+    return value == null ? "" : numericEditValue(value);
+  }
+  return controlInput(control).value;
+}
+
+function validateConfiguredValue(column, control, value) {
+  const options = column.cardOptions || {};
+  const empty = configuredValueIsEmpty(column, value);
+  if (options.required && empty) {
+    throw new Error(`${fieldLabel(column)} is required.`);
+  }
+  if (Object.prototype.hasOwnProperty.call(options, "pattern") && !empty) {
+    const expression = new RegExp(`^(?:${options.pattern})$`, "u");
+    if (!expression.test(patternValue(column, control, value))) {
+      throw new Error(`${fieldLabel(column)} does not match the required pattern.`);
+    }
+  }
+}
+
+function readControl(column, control) {
+  const value = readControlValue(column, control);
+  validateConfiguredValue(column, control, value);
+  return value;
+}
+
+function setControlInvalid(control, invalid) {
+  const value = String(invalid);
+  control.setAttribute("aria-invalid", value);
+  const input = controlInput(control);
+  if (input !== control) {
+    input.setAttribute("aria-invalid", value);
+  }
+}
+
+function refreshControlValidity(column, control) {
+  try {
+    readControl(column, control);
+    setControlInvalid(control, false);
+    return true;
+  } catch (error) {
+    setControlInvalid(control, true);
+    return false;
+  }
+}
+
 function validDateTimestamp(value, column) {
   if (!Number.isFinite(value)) {
     throw new Error(
-      `${column.label} must contain a valid date` +
+      `${fieldLabel(column)} must contain a valid date` +
       `${column.baseType === "DateTime" ? " and time" : ""}.`
     );
   }
@@ -1055,13 +1448,17 @@ function resizeTextControls() {
 }
 
 function scheduleSave(column, control) {
+  if (fieldIsLocked(column)) {
+    clearScheduledSave(column.colId);
+    return;
+  }
   let value;
   try {
     value = readControl(column, control);
-    controlInput(control).setAttribute("aria-invalid", "false");
+    setControlInvalid(control, false);
   } catch (error) {
     clearScheduledSave(column.colId);
-    controlInput(control).setAttribute("aria-invalid", "true");
+    setControlInvalid(control, true);
     setStatus(error.message, true);
     return;
   }
@@ -1086,12 +1483,15 @@ function clearScheduledSave(columnId) {
 
 function saveFromControl(column, control) {
   clearScheduledSave(column.colId);
+  if (fieldIsLocked(column)) {
+    return false;
+  }
   let value;
   try {
     value = readControl(column, control);
-    controlInput(control).setAttribute("aria-invalid", "false");
+    setControlInvalid(control, false);
   } catch (error) {
-    controlInput(control).setAttribute("aria-invalid", "true");
+    setControlInvalid(control, true);
     setStatus(error.message, true);
     return false;
   }
@@ -1109,7 +1509,7 @@ function saveKey(rowId, columnId) {
 }
 
 function queueSave(rowId, column, value) {
-  if (column.isFormula || rowId == null || rowId === "new") {
+  if (fieldIsLocked(column) || rowId == null || rowId === "new") {
     return Promise.resolve();
   }
 
@@ -1152,7 +1552,7 @@ function queueSave(rowId, column, value) {
       setStatus("Saved");
     } catch (error) {
       console.error(`Could not save ${column.colId}`, error);
-      setStatus(`Could not save ${column.label}: ${error.message || error}`, true);
+      setStatus(`Could not save ${fieldLabel(column)}: ${error.message || error}`, true);
     } finally {
       state.activeSaves -= 1;
     }
@@ -1250,8 +1650,9 @@ function reconcileControls(record) {
     if (hasPendingSave(record.id, columnId) || control.contains(document.activeElement)) {
       continue;
     }
-    const value = record[columnId];
-    entry.rawValue = value;
+    const proposed = proposedFieldValue(column, record[columnId]);
+    const value = proposed.value;
+    entry.rawValue = proposed.value;
     const input = controlInput(control);
     switch (column.baseType) {
       case "Text":
@@ -1261,16 +1662,15 @@ function reconcileControls(record) {
       case "Numeric":
       case "Int":
         input.value = formatNumber(value, column);
-        input.setAttribute("aria-invalid", "false");
         break;
       case "Bool":
         input.checked = Boolean(value);
         break;
       case "Date":
-        input.value = dateInputValue(value);
+        input.value = dateControlValue(column, proposed);
         break;
       case "DateTime":
-        input.value = dateTimeInputValue(value, column);
+        input.value = dateControlValue(column, proposed);
         break;
       case "Choice":
         rebuildChoice(input, column, value);
@@ -1279,12 +1679,14 @@ function reconcileControls(record) {
         rebuildChoiceList(control, column, value);
         break;
     }
+    refreshControlValidity(column, control);
   }
 }
 
 async function handleRecord(incomingRecord, mappings) {
   const eventSequence = ++state.eventSequence;
   const mapping = normalizeMapping(mappings?.[FIELDS_MAPPING]);
+  const optionsMapping = normalizeMapping(mappings?.[OPTIONS_MAPPING]);
   const previousRowId = state.record?.id;
 
   if (previousRowId != null && incomingRecord?.id !== previousRowId) {
@@ -1297,6 +1699,7 @@ async function handleRecord(incomingRecord, mappings) {
   if (!incomingRecord || incomingRecord.id == null || incomingRecord.id === "new") {
     state.record = null;
     state.mapping = mapping;
+    state.optionsMapping = optionsMapping;
     showEmptyPanel();
     return;
   }
@@ -1307,6 +1710,7 @@ async function handleRecord(incomingRecord, mappings) {
   if (!mapping) {
     state.record = incomingRecord;
     state.mapping = null;
+    state.optionsMapping = optionsMapping;
     showAlert("Map a Choice List column to Fields in the widget configuration.");
     return;
   }
@@ -1324,9 +1728,21 @@ async function handleRecord(incomingRecord, mappings) {
       throw new Error("The column mapped to Fields must be a Grist Choice List.");
     }
 
-    let record = await includeColumns(incomingRecord, [mapping]);
+    const optionsMappingColumn = optionsMapping ? metadata.get(optionsMapping) : null;
+    if (optionsMapping && !optionsMappingColumn) {
+      throw new Error(
+        `The mapped Options column "${optionsMapping}" does not exist in the linked table.`
+      );
+    }
+    if (optionsMappingColumn && baseType(optionsMappingColumn.type) !== "Text") {
+      throw new Error("The column mapped to Options must be a Grist Text column.");
+    }
+
+    let record = await includeColumns(incomingRecord, [mapping, optionsMapping].filter(Boolean));
     const fieldIds = parseFieldList(record[mapping]);
-    const fields = resolveFields(fieldIds, metadata);
+    let fields = resolveFields(fieldIds, metadata);
+    const cardOptions = optionsMapping ? parseCardOptions(record[optionsMapping], fields) : {};
+    fields = configureFields(fields, cardOptions);
     record = await includeColumns(record, fields.flatMap(field => [
       field.colId,
       ...field.ruleColumnIds
@@ -1342,13 +1758,16 @@ async function handleRecord(incomingRecord, mappings) {
       field.type,
       field.isFormula,
       field.options,
+      field.cardOptions,
       field.ruleColumnIds
     ]));
     const canReconcile = state.renderedRecordId === record.id &&
-      state.mapping === mapping && state.definitionKey === definitionKey;
+      state.mapping === mapping && state.optionsMapping === optionsMapping &&
+      state.definitionKey === definitionKey;
 
     state.record = record;
     state.mapping = mapping;
+    state.optionsMapping = optionsMapping;
     state.metadata = metadata;
     if (!fields.length) {
       showEmptyPanel();
@@ -1364,6 +1783,7 @@ async function handleRecord(incomingRecord, mappings) {
   } catch (error) {
     state.record = incomingRecord;
     state.mapping = mapping;
+    state.optionsMapping = optionsMapping;
     showAlert(error.message || String(error));
   }
 }
@@ -1386,6 +1806,7 @@ function startWidget() {
       }
       state.record = null;
       state.mapping = normalizeMapping(mappings?.[FIELDS_MAPPING]);
+      state.optionsMapping = normalizeMapping(mappings?.[OPTIONS_MAPPING]);
       showEmptyPanel();
     });
   });
@@ -1400,6 +1821,14 @@ function startWidget() {
         optional: false,
         allowMultiple: false,
         description: "A Choice List containing the column IDs to show in this record's card."
+      },
+      {
+        name: OPTIONS_MAPPING,
+        title: "Options",
+        type: "Text",
+        optional: true,
+        allowMultiple: false,
+        description: "Optional per-record JSON configuration keyed by the shown column IDs."
       }
     ]
   });
