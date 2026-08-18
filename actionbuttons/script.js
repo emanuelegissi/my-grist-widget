@@ -51,26 +51,6 @@ async function getSelectedTableId() {
   throw new Error("Unable to determine the selected table id.");
 }
 
-async function fetchSelectedTableData() {
-  if (typeof grist.fetchSelectedTable === "function") return await grist.fetchSelectedTable();
-  if (typeof grist.docApi?.fetchSelectedTable === "function") return await grist.docApi.fetchSelectedTable();
-  throw new Error("Unable to read the selected table.");
-}
-
-function findClosestRowIdAfterRemoval(beforeIds, afterIdSet, removedRowId) {
-  const removedIndex = beforeIds.indexOf(removedRowId);
-  if (removedIndex === -1) return null;
-  for (let i = removedIndex + 1; i < beforeIds.length; i++) {
-    const rowId = beforeIds[i];
-    if (afterIdSet.has(rowId)) return rowId;
-  }
-  for (let i = removedIndex - 1; i >= 0; i--) {
-    const rowId = beforeIds[i];
-    if (afterIdSet.has(rowId)) return rowId;
-  }
-  return null;
-}
-
 function getCursorTarget(action, selectedTableId) {
   if (action[1] !== selectedTableId) return null;
 
@@ -81,13 +61,7 @@ function getCursorTarget(action, selectedTableId) {
     : records;
 
   if (actionName === "AddRecord" || actionName === "BulkAddRecord") {
-    return { type: "added", rowId };
-  }
-  if (actionName === "UpdateRecord" || actionName === "BulkUpdateRecord") {
-    return rowId == null ? null : { type: "row", rowId };
-  }
-  if (actionName === "RemoveRecord" || actionName === "BulkRemoveRecord") {
-    return rowId == null ? null : { type: "removed", rowId };
+    return { rowId };
   }
   return null;
 }
@@ -113,24 +87,12 @@ async function applyUserActions(actions) {
     }
   });
 
-  const beforeIds = cursorTarget?.type === "removed"
-    ? (await fetchSelectedTableData()).id || []
-    : [];
   const result = await grist.docApi.applyUserActions(actions);
   if (!cursorTarget) return result;
 
   try {
-    let nextCursorRowId = null;
-
-    if (cursorTarget.type === "added") {
-      nextCursorRowId = cursorTarget.rowId ?? getReturnedRowId(result, cursorActionIndex);
-    } else if (cursorTarget.type === "row") {
-      nextCursorRowId = cursorTarget.rowId;
-    } else {
-      const afterIds = (await fetchSelectedTableData()).id || [];
-      const afterIdSet = new Set(afterIds);
-      nextCursorRowId = findClosestRowIdAfterRemoval(beforeIds, afterIdSet, cursorTarget.rowId);
-    }
+    const nextCursorRowId = cursorTarget.rowId ??
+      getReturnedRowId(result, cursorActionIndex);
 
     if (nextCursorRowId != null) await grist.setCursorPos({ rowId: nextCursorRowId });
   } catch (error) {

@@ -19,8 +19,7 @@ The widget requires full document access because its buttons may apply Grist Use
 - JavaScript button handlers, including asynchronous handlers;
 - direct Grist UserAction arrays submitted atomically in their configured order;
 - all buttons disabled while an action sequence is running;
-- cursor movement after adding, updating, or removing records;
-- removal navigation based on the widget's filtered and linked row context;
+- cursor movement after adding records;
 - configuration and runtime errors displayed with browser alerts;
 - no external UI framework.
 
@@ -276,18 +275,16 @@ earlier successful calls are not rolled back if a later one fails.
 
 ## Cursor behavior
 
-Cursor movement is performed only when the action targets the table linked to the widget.
+Cursor movement is performed only when an add action targets the table linked to the widget.
 
 | Action | Cursor destination |
 | --- | --- |
 | `AddRecord` | Created row, using the ID returned by Grist when automatically assigned. |
 | `BulkAddRecord` | Last created row, using the IDs returned by Grist when automatically assigned. |
-| `UpdateRecord` | Supplied row ID. |
-| `BulkUpdateRecord` | Last supplied row ID. |
-| `RemoveRecord` | Next surviving row; if none exists, the previous surviving row. |
-| `BulkRemoveRecord` | Next surviving row after the last supplied row ID; if none exists, the previous surviving row. |
-
-Only removal actions take before-and-after snapshots with `fetchSelectedTable()`. This preserves the custom section's filters and Select By context when choosing the next or previous row.
+| `UpdateRecord` | No cursor movement. |
+| `BulkUpdateRecord` | No cursor movement. |
+| `RemoveRecord` | No cursor movement. |
+| `BulkRemoveRecord` | No cursor movement. |
 
 ## Formula example
 
