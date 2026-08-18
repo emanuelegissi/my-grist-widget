@@ -1135,13 +1135,6 @@ function hasDatalist(column) {
   return Object.prototype.hasOwnProperty.call(column.cardOptions || {}, "datalist");
 }
 
-function textIsMultiline(column) {
-  if (Object.prototype.hasOwnProperty.call(column.cardOptions || {}, "multiline")) {
-    return column.cardOptions.multiline;
-  }
-  return !hasDatalist(column);
-}
-
 function datalistValue(column, value) {
   if (typeof value === "string") {
     return value;
@@ -1178,7 +1171,7 @@ function createControl(column, proposed, id) {
   let control;
   switch (column.baseType) {
     case "Text": {
-      const multiline = textIsMultiline(column);
+      const multiline = column.cardOptions?.multiline === true;
       control = element(multiline ? "textarea" : "input", {
         ...commonControl(column, id),
         type: multiline ? undefined : "text",
@@ -1191,7 +1184,9 @@ function createControl(column, proposed, id) {
         readOnly: readonly
       });
       bindTypedControl(control, column);
-      queueMicrotask(() => resizeTextArea(control));
+      if (multiline) {
+        queueMicrotask(() => resizeTextArea(control));
+      }
       break;
     }
 

@@ -113,10 +113,10 @@ valid value. Numeric JSON numbers are converted to the document locale. Numeric 
 that locale. Date and DateTime strings should use the native input formats `YYYY-MM-DD` and
 `YYYY-MM-DDTHH:mm[:ss]`; numeric values are treated as Unix timestamps in seconds.
 
-Text fields normally retain Dyncard's expanding multiline editor. Because HTML does not support a
-`datalist` on `textarea`, a Text field configured with `datalist` uses a one-line text input.
-`multiline: false` also selects the one-line input. Explicit `multiline: true` cannot be combined
-with `datalist` and produces a configuration alert.
+Text fields use a one-line text input by default. Set `multiline: true` to use an expanding textarea.
+Because HTML does not support a `datalist` on `textarea`, `multiline: true` cannot be combined with
+`datalist` and produces a configuration alert. Omitting `multiline` or setting it to `false` keeps
+the one-line input.
 
 Configurations for columns absent from the current record's **Fields** list are ignored. This allows
 one Options object to contain settings for every field that a record might display. For fields that
@@ -128,7 +128,7 @@ and non-array `datalist` values produce a configuration alert. An empty Options 
 
 | Grist type | Card control | Empty value |
 | --- | --- | --- |
-| Text | Expanding textarea by default; one-line input with `multiline: false` or `datalist` | Empty string |
+| Text | One-line text input by default; expanding textarea with `multiline: true` | Empty string |
 | Numeric | Locale-aware Grist numeric editor and formatter | `null` |
 | Int | Locale-aware Grist integer editor and formatter | `null` |
 | Bool | Native checkbox input | `false` |
