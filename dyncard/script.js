@@ -30,7 +30,9 @@ const SUPPORTED_TYPES = new Set([
   "Date",
   "DateTime",
   "Choice",
-  "ChoiceList"
+  "ChoiceList",
+  "Ref",
+  "RefList"
 ]);
 const DATALIST_TYPES = new Set(["Text", "Numeric", "Int", "Date", "DateTime"]);
 const PATTERN_TYPES = new Set(["Text", "Numeric", "Int", "Date", "DateTime", "Choice"]);
@@ -46,6 +48,9 @@ const FIELD_OPTION_NAMES = new Set([
   "multiline",
   "default"
 ]);
+const GRIST_OBJECT_CODES = new Set([
+  "l", "O", "D", "d", "S", "C", "R", "r", "E", "P", "U", "V"
+]);
 const DEFAULT_ALIGNMENTS = Object.freeze({
   Text: "left",
   Numeric: "right",
@@ -54,7 +59,9 @@ const DEFAULT_ALIGNMENTS = Object.freeze({
   Date: "left",
   DateTime: "left",
   Choice: "left",
-  ChoiceList: "left"
+  ChoiceList: "left",
+  Ref: "left",
+  RefList: "left"
 });
 const NUMBER_MODES = ["currency", "decimal", "percent", "scientific"];
 const FONT_STYLE_CLASSES = Object.freeze({
@@ -394,11 +401,22 @@ function validateDefaultOption(column, value) {
         error();
       }
       break;
+    case "Ref":
+    case "RefList":
+      error();
+      break;
   }
 }
 
 function baseType(type) {
   return String(type || "").split(":", 1)[0];
+}
+
+function referenceTableId(type) {
+  const value = String(type || "");
+  return value.startsWith("Ref:") || value.startsWith("RefList:")
+    ? value.slice(value.indexOf(":") + 1)
+    : "";
 }
 
 function clamp(value, minimum, maximum) {
@@ -655,7 +673,10 @@ async function fetchMetadata() {
   const tableRef = tables.id[tableIndex];
   const metadata = new Map();
   const columnRecords = [];
-  const columnIdsByRef = new Map();
+  const columnIdsByRef = new Map(columns.id.map((columnRef, index) => [
+    String(columnRef),
+    columns.colId[index]
+  ]));
   for (let index = 0; index < columns.id.length; index += 1) {
     if (columns.parentId[index] !== tableRef) {
       continue;
@@ -668,15 +689,19 @@ async function fetchMetadata() {
       type: columns.type?.[index] || "",
       isFormula: Boolean(columns.isFormula?.[index]),
       options: parseWidgetOptions(columns.widgetOptions?.[index]),
+      referenceTableId: referenceTableId(columns.type?.[index]),
+      visibleColRef: columns.visibleCol?.[index],
       ruleRefs: decodeCellValue(columns.rules?.[index])
     };
     columnRecords.push(record);
-    columnIdsByRef.set(String(columns.id[index]), colId);
   }
   for (const record of columnRecords) {
     const ruleRefs = Array.isArray(record.ruleRefs) ? record.ruleRefs : [];
     metadata.set(record.colId, {
       ...record,
+      visibleColId: record.visibleColRef
+        ? columnIdsByRef.get(String(record.visibleColRef)) || null
+        : null,
       ruleColumnIds: ruleRefs
         .map(ruleRef => columnIdsByRef.get(String(ruleRef)))
         .filter(Boolean)
@@ -704,7 +729,11 @@ function resolveFields(fieldIds, metadata) {
         `"${column.type || "unknown"}".`
       );
     }
-    return { ...column, baseType: type };
+    return {
+      ...column,
+      baseType: type,
+      isFormula: column.isFormula || type === "Ref" || type === "RefList"
+    };
   });
 }
 
@@ -719,7 +748,11 @@ function decodeCellValue(value) {
   if (Array.isArray(value) && value[0] === "L") {
     return value.slice(1);
   }
-  if (Array.isArray(value) && typeof grist.decodeObject === "function") {
+  // RefList show-column values are ordinary arrays. Decoding one as though its
+  // first item were a Grist type tag turns values such as [3, 2] into an
+  // UnknownValue object (rendered as {"Value":"3(2)"} by older Grist builds).
+  if (Array.isArray(value) && GRIST_OBJECT_CODES.has(value[0]) &&
+      typeof grist.decodeObject === "function") {
     try {
       return grist.decodeObject(value);
     } catch (error) {
@@ -727,6 +760,88 @@ function decodeCellValue(value) {
     }
   }
   return value;
+}
+
+function referenceDisplayText(value) {
+  const decoded = decodeCellValue(value);
+  if (decoded == null || decoded === "" || decoded === 0) {
+    return "";
+  }
+  if (Array.isArray(decoded)) {
+    return decoded.map(referenceDisplayText).filter(Boolean).join(", ");
+  }
+  if (typeof decoded === "object") {
+    try {
+      return JSON.stringify(decoded);
+    } catch (error) {
+      return String(decoded);
+    }
+  }
+  return String(decoded);
+}
+
+function referenceItems(column, value) {
+  const decoded = decodeCellValue(value);
+  if (column.baseType === "RefList") {
+    if (decoded && typeof decoded === "object" && Array.isArray(decoded.rowIds)) {
+      return decoded.rowIds;
+    }
+    return Array.isArray(decoded) ? decoded : decoded == null ? [] : [decoded];
+  }
+  if (decoded && typeof decoded === "object" && "rowId" in decoded) {
+    return decoded.rowId == null || decoded.rowId === 0 ? [] : [decoded.rowId];
+  }
+  return decoded == null || decoded === "" || decoded === 0 ? [] : [decoded];
+}
+
+async function resolveReferenceDisplays(fields, record) {
+  const tableCache = new Map();
+  const fetchReferenceTable = tableId => {
+    if (!tableId) {
+      return Promise.resolve(null);
+    }
+    if (!tableCache.has(tableId)) {
+      tableCache.set(tableId, grist.docApi.fetchTable(tableId).catch(error => {
+        console.warn(`Could not load referenced table ${tableId}`, error);
+        return null;
+      }));
+    }
+    return tableCache.get(tableId);
+  };
+
+  return Promise.all(fields.map(async column => {
+    if (column.baseType !== "Ref" && column.baseType !== "RefList") {
+      return column;
+    }
+
+    const items = referenceItems(column, record[column.colId]);
+    const numericIds = items.filter(item => typeof item === "number" && item !== 0);
+    const table = numericIds.length
+      ? await fetchReferenceTable(column.referenceTableId)
+      : null;
+    const rowIndices = new Map(
+      Array.isArray(table?.id) ? table.id.map((rowId, index) => [String(rowId), index]) : []
+    );
+    const visibleValues = column.visibleColId && Array.isArray(table?.[column.visibleColId])
+      ? table[column.visibleColId]
+      : null;
+
+    const displayItems = items.map(item => {
+      if (typeof item !== "number" || item === 0) {
+        return referenceDisplayText(item);
+      }
+      const rowIndex = rowIndices.get(String(item));
+      if (rowIndex === undefined || !visibleValues) {
+        return String(item);
+      }
+      return referenceDisplayText(visibleValues[rowIndex]) || String(item);
+    }).filter(Boolean);
+
+    return {
+      ...column,
+      referenceText: displayItems.join(", ")
+    };
+  }));
 }
 
 async function fetchFullRecord(rowId) {
@@ -1146,6 +1261,18 @@ function createControl(column, proposed, id) {
       });
       rebuildChoiceList(control, column, value);
       break;
+
+    case "Ref":
+    case "RefList":
+      control = element("input", {
+        ...commonControl(column, id),
+        type: "text",
+        value: column.referenceText || "",
+        readOnly: readonly,
+        autocomplete: "off",
+        required
+      });
+      break;
   }
   if (Object.prototype.hasOwnProperty.call(column.cardOptions || {}, "pattern") &&
       (control.tagName === "INPUT" || control.tagName === "TEXTAREA")) {
@@ -1359,6 +1486,9 @@ function readControlValue(column, control) {
       );
       return choices.length ? ["L", ...choices] : null;
     }
+    case "Ref":
+    case "RefList":
+      return input.value;
     default:
       return null;
   }
@@ -1678,6 +1808,10 @@ function reconcileControls(record) {
       case "ChoiceList":
         rebuildChoiceList(control, column, value);
         break;
+      case "Ref":
+      case "RefList":
+        input.value = column.referenceText || "";
+        break;
     }
     refreshControlValidity(column, control);
   }
@@ -1747,6 +1881,7 @@ async function handleRecord(incomingRecord, mappings) {
       field.colId,
       ...field.ruleColumnIds
     ]));
+    fields = await resolveReferenceDisplays(fields, record);
     if (eventSequence !== state.eventSequence) {
       return;
     }
@@ -1759,6 +1894,9 @@ async function handleRecord(incomingRecord, mappings) {
       field.isFormula,
       field.options,
       field.cardOptions,
+      field.referenceTableId,
+      field.visibleColId,
+      field.referenceText,
       field.ruleColumnIds
     ]));
     const canReconcile = state.renderedRecordId === record.id &&

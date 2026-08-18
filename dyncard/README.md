@@ -9,7 +9,7 @@ Dyncard is a framework-free Grist custom widget that turns a per-record list of 
 - Accepts only column IDs.
 - Uses each column's Grist label, description, type, formula state, widget options, and document settings.
 - Applies Grist cell colors and font styles, including conditional cell rules for the current record.
-- Supports Text, Numeric, Int, Bool, Date, DateTime, Choice, and Choice List columns.
+- Supports Text, Numeric, Int, Bool, Date, DateTime, Choice, Choice List, Ref, and RefList columns.
 - Uses Grist's field alignment defaults and numeric value formats.
 - Uses native browser controls for Bool, Date, DateTime, Choice, and Choice List fields.
 - Supports HTML datalist suggestions for Text, Numeric, Int, Date, and DateTime fields.
@@ -94,9 +94,10 @@ does not match its configured pattern, Dyncard sets the input background to `#FD
 validation error, cancels any pending autosave, and does not write the value to Grist. Validation is
 also reflected through `aria-invalid` and `aria-required`.
 
-`readonly` is available for every supported field type. Text, Numeric, Int, Date, and DateTime use
-native readonly controls. Bool, Choice, and ChoiceList use disabled controls because HTML does not
-provide a readonly state for them. Dyncard also blocks readonly fields in its save pipeline.
+`readonly` makes editable Text, Numeric, Int, Date, and DateTime fields use native readonly controls.
+Bool, Choice, and ChoiceList use disabled controls because HTML does not provide a readonly state for
+them. Dyncard also blocks readonly fields in its save pipeline. Ref and RefList use the formula-field
+behavior described below instead.
 
 `default` must use the field's data type: a string for Text and Choice, a number for Numeric, an
 integer for Int, a boolean for Bool, and an array of strings for ChoiceList. Date and DateTime accept
@@ -135,10 +136,19 @@ and non-array `datalist` values produce a configuration alert. An empty Options 
 | DateTime | Native `datetime-local` input | `null` |
 | Choice | Native `select` dropdown | Empty string |
 | ChoiceList | Group of native checkbox inputs | `null` when no choice is selected |
+| Ref | Formula-style text input containing the referenced display value | Empty string |
+| RefList | Formula-style text input containing comma-separated referenced display values | Empty string |
 
 If a current Choice or Choice List value is absent from the column's configured choices, it remains available in the corresponding native control.
 
-Formula columns of these types are displayed but disabled, because their values are calculated by Grist.
+Ref and RefList controls use display text supplied by Grist when available. When the record contains
+numeric reference IDs, Dyncard resolves them through the target table and the reference column's
+configured visible column. A missing visible column or referenced row falls back to displaying the
+row ID. RefList display values retain their stored order and are joined with a comma and space. Both
+reference types use the same disabled `=` formula-field UI and save protection as Grist formula
+columns.
+
+All fields using the formula UI are displayed disabled and are never written by Dyncard.
 
 ## Autosave behavior
 
